@@ -1,1351 +1,779 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Tyler Secor Intern Project</title>
-
-  <!-- Document parsers -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="https://unpkg.com/mammoth/mammoth.browser.min.js"></script>
-
-  <style>
-    :root{
-      --bg:#f6f8f6;
-      --card:#ffffff;
-      --text:#13211a;
-      --muted:#5b675f;
-      --line:#d6ddd7;
-
-      --primary:#1f4d3b;
-      --primary-dark:#17392c;
-      --accent:#c59b3a;
-
-      --high-bg:#fde8e8;
-      --high-text:#9b1c1c;
-
-      --med-bg:#fff1df;
-      --med-text:#9b5312;
-
-      --low-bg:#fff7d6;
-      --low-text:#8a5a00;
-
-      --pos-bg:#e5f6ea;
-      --pos-text:#166534;
-
-      --chip:#e9eeea;
-
-      --error-bg:#fff1f2;
-      --error-text:#9f1239;
-      --ok-bg:#eefdf3;
-      --ok-text:#166534;
-    }
-
-    * { box-sizing: border-box; }
-
-    body {
-      margin: 0;
-      font-family: "Segoe UI", Arial, Helvetica, sans-serif;
-      background: linear-gradient(180deg, #f9fbf9 0%, #f3f6f4 100%);
-      color: var(--text);
-    }
-
-    .container {
-      max-width: 1460px;
-      margin: 0 auto;
-      padding: 24px;
-    }
-
-    .hero {
-      background: linear-gradient(135deg, var(--primary) 0%, #245844 55%, #2c6750 100%);
-      color: white;
-      border-radius: 24px;
-      padding: 24px 28px;
-      margin-bottom: 18px;
-      border: 1px solid rgba(255,255,255,0.08);
-      box-shadow: 0 12px 30px rgba(24, 57, 44, 0.18);
-    }
-
-    h1 {
-      margin: 0 0 6px 0;
-      font-size: 34px;
-      letter-spacing: -0.02em;
-    }
-
-    .subtitle {
-      color: rgba(255,255,255,0.88);
-      font-size: 14px;
-    }
-
-    .top-actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-bottom: 18px;
-    }
-
-    .btn {
-      border: 1px solid var(--primary);
-      background: var(--primary);
-      color: white;
-      padding: 10px 14px;
-      border-radius: 12px;
-      cursor: pointer;
-      font-size: 14px;
-      font-weight: 700;
-      transition: all 0.15s ease;
-    }
-
-    .btn:hover {
-      opacity: 0.95;
-      transform: translateY(-1px);
-    }
-
-    .btn.secondary {
-      background: white;
-      color: var(--text);
-      border: 1px solid var(--line);
-    }
-
-    .btn.gold {
-      background: var(--accent);
-      color: #2f2410;
-      border: 1px solid #b98f31;
-    }
-
-    .summary-grid {
-      display: grid;
-      grid-template-columns: repeat(5, minmax(0, 1fr));
-      gap: 12px;
-      margin-bottom: 18px;
-    }
-
-    .summary-card {
-      background: var(--card);
-      border: 1px solid var(--line);
-      border-radius: 18px;
-      padding: 16px;
-      box-shadow: 0 6px 15px rgba(20, 34, 28, 0.04);
-    }
-
-    .summary-label {
-      color: var(--muted);
-      font-size: 13px;
-      margin-bottom: 4px;
-    }
-
-    .summary-value {
-      font-size: 28px;
-      font-weight: 800;
-    }
-
-    .layout {
-      display: grid;
-      grid-template-columns: 390px 1fr;
-      gap: 18px;
-    }
-
-    .panel {
-      background: var(--card);
-      border: 1px solid var(--line);
-      border-radius: 20px;
-      padding: 16px;
-      box-shadow: 0 6px 15px rgba(20, 34, 28, 0.04);
-    }
-
-    .panel h2 {
-      margin-top: 0;
-      margin-bottom: 8px;
-      font-size: 21px;
-    }
-
-    .field {
-      margin-bottom: 14px;
-    }
-
-    .field label {
-      display: block;
-      margin-bottom: 6px;
-      font-size: 14px;
-      font-weight: 700;
-    }
-
-    .field textarea,
-    .field input,
-    .field select {
-      width: 100%;
-      padding: 10px 12px;
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      font-size: 14px;
-      font-family: inherit;
-      background: white;
-      color: var(--text);
-    }
-
-    .field textarea {
-      resize: vertical;
-      min-height: 120px;
-    }
-
-    .upload-box {
-      border: 2px dashed #b7c4bb;
-      border-radius: 16px;
-      padding: 18px;
-      text-align: center;
-      background: #edf5f1;
-      color: var(--text);
-    }
-
-    .small {
-      font-size: 12px;
-      color: var(--muted);
-      margin-top: 6px;
-    }
-
-    .status {
-      display: none;
-      margin-bottom: 14px;
-      border-radius: 14px;
-      padding: 12px 14px;
-      font-size: 13px;
-      font-weight: 600;
-    }
-
-    .status.error {
-      display: block;
-      background: var(--error-bg);
-      color: var(--error-text);
-      border: 1px solid #fecdd3;
-    }
-
-    .status.ok {
-      display: block;
-      background: var(--ok-bg);
-      color: var(--ok-text);
-      border: 1px solid #bbf7d0;
-    }
-
-    .toolbar {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: space-between;
-      align-items: flex-end;
-      gap: 12px;
-      margin-bottom: 12px;
-    }
-
-    .toolbar-left h2 {
-      margin: 0 0 5px 0;
-      font-size: 24px;
-    }
-
-    .toolbar-right {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      align-items: center;
-    }
-
-    .toolbar-right input,
-    .toolbar-right select {
-      padding: 10px 12px;
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      font-size: 14px;
-      background: white;
-    }
-
-    .result-list {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-
-    .result-card {
-      background: white;
-      border: 1px solid var(--line);
-      border-radius: 16px;
-      padding: 16px;
-    }
-
-    .badges {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      margin-bottom: 8px;
-    }
-
-    .badge {
-      display: inline-block;
-      padding: 6px 10px;
-      border-radius: 999px;
-      font-size: 12px;
-      font-weight: 700;
-      border: 1px solid transparent;
-    }
-
-    .priority-high {
-      background: var(--high-bg);
-      color: var(--high-text);
-      border-color: #f8caca;
-    }
-
-    .priority-medium {
-      background: var(--med-bg);
-      color: var(--med-text);
-      border-color: #ffd9ac;
-    }
-
-    .priority-low {
-      background: var(--low-bg);
-      color: var(--low-text);
-      border-color: #f7e28a;
-    }
-
-    .priority-positive {
-      background: var(--pos-bg);
-      color: var(--pos-text);
-      border-color: #bce8c8;
-    }
-
-    .badge-neutral {
-      background: #f3f5f4;
-      color: #374151;
-      border-color: #e6ebe8;
-    }
-
-    .title {
-      font-size: 20px;
-      font-weight: 800;
-      margin: 0 0 8px 0;
-      line-height: 1.3;
-    }
-
-    .reason {
-      font-weight: 700;
-      margin-bottom: 8px;
-      color: var(--primary-dark);
-    }
-
-    .excerpt {
-      color: #46574d;
-      line-height: 1.5;
-      margin-bottom: 12px;
-    }
-
-    .meta {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-      font-size: 14px;
-      margin-bottom: 10px;
-    }
-
-    .chips {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      margin-bottom: 10px;
-    }
-
-    .chip {
-      background: var(--chip);
-      color: #33413a;
-      padding: 6px 10px;
-      border-radius: 999px;
-      font-size: 12px;
-    }
-
-    .links {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      font-size: 14px;
-    }
-
-    .links a, .links button {
-      color: #1a5fb4;
-      background: none;
-      border: none;
-      padding: 0;
-      cursor: pointer;
-      font: inherit;
-      text-decoration: underline;
-    }
-
-    pre.raw {
-      background: #102119;
-      color: #e5eee8;
-      padding: 12px;
-      border-radius: 12px;
-      overflow: auto;
-      max-height: 280px;
-      white-space: pre-wrap;
-      margin-top: 12px;
-      font-size: 12px;
-    }
-
-    .empty {
-      text-align: center;
-      color: var(--muted);
-      padding: 40px 20px;
-      border: 1px dashed var(--line);
-      border-radius: 16px;
-      background: #fafcfa;
-    }
-
-    .footer-note {
-      margin-top: 18px;
-      font-size: 12px;
-      color: var(--muted);
-      text-align: center;
-    }
-
-    @media (max-width: 1100px) {
-      .layout {
-        grid-template-columns: 1fr;
-      }
-      .summary-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
-      .meta {
-        grid-template-columns: 1fr;
-      }
-    }
-
-    @media (max-width: 700px) {
-      .summary-grid {
-        grid-template-columns: 1fr;
-      }
-      .toolbar {
-        flex-direction: column;
-        align-items: stretch;
-      }
-      .toolbar-right {
-        width: 100%;
-      }
-      .toolbar-right input,
-      .toolbar-right select {
-        width: 100%;
-      }
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="hero">
-      <h1>Tyler Secor Intern Project</h1>
-      <div class="subtitle">Credit Alert Risk Filter</div>
-    </div>
-
-    <div id="statusBox" class="status"></div>
-
-    <div class="top-actions">
-      <button class="btn" onclick="downloadCsv()">Export CSV</button>
-      <button class="btn" onclick="downloadJson()">Export JSON</button>
-      <button class="btn" onclick="downloadMarkdown()">Export Report</button>
-      <button class="btn secondary" onclick="toggleKeywordLibrary()">Keyword Library</button>
-      <button class="btn gold" onclick="loadSample()">Load Sample</button>
-      <button class="btn secondary" onclick="clearAllInputs()">Clear</button>
-    </div>
-
-    <div class="summary-grid">
-      <div class="summary-card">
-        <div class="summary-label">High</div>
-        <div class="summary-value" id="countHigh">0</div>
-      </div>
-      <div class="summary-card">
-        <div class="summary-label">Medium</div>
-        <div class="summary-value" id="countMedium">0</div>
-      </div>
-      <div class="summary-card">
-        <div class="summary-label">Low</div>
-        <div class="summary-value" id="countLow">0</div>
-      </div>
-      <div class="summary-card">
-        <div class="summary-label">Positive / Monitor</div>
-        <div class="summary-value" id="countPositive">0</div>
-      </div>
-      <div class="summary-card">
-        <div class="summary-label">Keywords</div>
-        <div class="summary-value" id="keywordCount">0</div>
-      </div>
-    </div>
-
-    <div class="layout">
-      <div class="panel">
-        <h2>Inputs</h2>
-
-        <div class="field">
-          <label>Upload files</label>
-          <div class="upload-box">
-            <input type="file" id="fileInput" multiple accept=".txt,.eml,.md,.log,.csv,.pdf,.docx" />
-          </div>
-          <div class="small">.txt, .eml, .md, .log, .csv, .pdf, .docx</div>
-        </div>
-
-        <div class="field">
-          <label for="alertText">Alert text</label>
-          <textarea id="alertText" placeholder="Paste Gmail or Google Alert text here"></textarea>
-        </div>
-
-        <div class="field">
-          <label for="watchlistText">Watchlist</label>
-          <textarea id="watchlistText" placeholder="One company, municipality, owner, or alias per line"></textarea>
-        </div>
-
-        <div class="field">
-          <label for="minPriority">Minimum priority</label>
-          <select id="minPriority">
-            <option value="High">High</option>
-            <option value="Medium">Medium</option>
-            <option value="Low" selected>Low</option>
-            <option value="Positive / Monitor">Positive / Monitor</option>
-            <option value="Ignore">Ignore</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <label for="categoryFilter">Category</label>
-          <select id="categoryFilter"></select>
-        </div>
-
-        <div class="field">
-          <button class="btn" onclick="runAnalysis()" style="width:100%;">Analyze</button>
-        </div>
-
-        <div class="field" id="keywordLibraryWrap" style="display:none;">
-          <label>Keyword library (editable JSON)</label>
-          <textarea id="keywordLibrary" style="min-height:260px;"></textarea>
-          <button class="btn secondary" onclick="applyCustomKeywords()" style="margin-top:8px;">Apply Keyword Changes</button>
-        </div>
-      </div>
-
-      <div class="panel">
-        <div class="toolbar">
-          <div class="toolbar-left">
-            <h2>Results</h2>
-            <div class="small">
-              <span id="shownCount">0</span> shown • <span id="parsedCount">0</span> chunks parsed
-            </div>
-          </div>
-          <div class="toolbar-right">
-            <input id="searchBox" type="text" placeholder="Search" />
-            <select id="sortBy">
-              <option value="priority">Priority</option>
-              <option value="score">Score</option>
-              <option value="title">Title</option>
-            </select>
-            <button class="btn secondary" onclick="runAnalysis()">Refresh</button>
-          </div>
-        </div>
-
-        <div id="results" class="result-list">
-          <div class="empty">Upload or paste alert text, then click Analyze.</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="footer-note">Tyler Secor Intern Project</div>
-  </div>
-
-  <script>
-    // -----------------------------
-    // Setup
-    // -----------------------------
-    if (window.pdfjsLib) {
-      pdfjsLib.GlobalWorkerOptions.workerSrc =
-        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-    }
-
-    const PRIORITY_RANK = {
-      "High": 4,
-      "Medium": 3,
-      "Low": 2,
-      "Positive / Monitor": 1,
-      "Ignore": 0
-    };
-
-    const GOOGLE_NOISE_PATTERNS = [
-      /manage your alerts/i,
-      /unsubscribe/i,
-      /google alerts/i,
-      /see more results/i,
-      /edit this alert/i,
-      /you have received this email/i,
-      /rss feed/i,
-      /flag as irrelevant/i,
-      /view all your alerts/i,
-      /send feedback/i,
-      /facebook/i,
-      /twitter/i,
-      /external email/i,
-      /CAUTION:/i,
-      /do not click links/i,
-      /contact the .* help desk/i
-    ];
-
-    const SOURCE_NOISE_PATTERNS = [
-      /investing\.com/i,
-      /benzinga/i
-    ];
-
-    const LOW_VALUE_PATTERNS = [
-      /people also watch/i,
-      /compare against competitors/i,
-      /summary table/i,
-      /corporate event calendar/i,
-      /price total return/i,
-      /net income to common/i,
-      /stock price/i,
-      /quote/i
-    ];
-
-    const SOURCE_WEIGHTS = [
-      { pattern: /sec\.gov|ftc\.gov|doj\.gov|emma\.msrb\.org|moodys|fitchratings|spglobal|krollbondratings|kbra/i, boost: 4, label: "Primary / regulatory / rating source" },
-      { pattern: /reuters|bloomberg|wsj|ft\.com|apnews|prnewswire|businesswire|globenewswire/i, boost: 2, label: "Financial/newswire source" }
-    ];
-
-    // -----------------------------
-    // Keyword library (editable)
-    // -----------------------------
-    const KEYWORD_LIBRARY = {
-      "Bankruptcy & Insolvency": {
-        severity: 10,
-        terms: [
-          "bankruptcy","filed for bankruptcy","chapter 7","chapter 11","chapter 13","insolvency","insolvent",
-          "liquidation","receivership","restructuring","debt restructuring","financial distress",
-          "debtor-in-possession","dip financing","out-of-court restructuring","moratorium on payments"
-        ]
-      },
-      "Credit Deterioration & Default": {
-        severity: 9,
-        terms: [
-          "default","payment default","missed payment","past due","delinquent","loan default",
-          "covenant breach","technical default","rating downgrade","credit downgrade","negative outlook",
-          "credit watch","creditwatch","distressed exchange","collections action","write-off","charge-off",
-          "increased leverage","liquidity pressures","financial weakness","refinancing risk","bond default",
-          "going concern warning","liquidity shortfall","cash flow problems"
-        ]
-      },
-      "Corporate Actions": {
-        severity: 5,
-        terms: [
-          "merger","acquisition","m&a","takeover","buyout","asset sale","divestiture","sale of business",
-          "spin-off","spinoff","carve-out","ownership change","change in control","strategic alternatives",
-          "exploring sale","stake sale","majority acquisition","minority investment"
-        ]
-      },
-      "Legal & Regulatory Issues": {
-        severity: 7,
-        terms: [
-          "lawsuit","litigation","legal action","class action","court ruling","judgment","settlement",
-          "regulatory investigation","sec investigation","ftc","doj investigation","enforcement action",
-          "penalty","fine imposed","compliance violation","fraud allegations","accounting fraud",
-          "financial restatement","material weakness","subpoena","criminal charges","civil charges",
-          "license revoked","permit revoked","cease and desist order","antitrust investigation","indictment"
-        ]
-      },
-      "Financial Performance Warning Signs": {
-        severity: 7,
-        terms: [
-          "earnings miss","revenue decline","profit decline","net loss","operating loss","negative ebitda",
-          "margin compression","declining sales","weak outlook","reduced guidance","lowered forecast",
-          "declining cash flow","cash burn","liquidity concerns","weak demand","lower volumes",
-          "negative free cash flow","poor financial results","declining profitability","financial strain"
-        ]
-      },
-      "Financing & Debt Activity": {
-        severity: 6,
-        terms: [
-          "bond issuance","loan refinancing","refinancing delay","credit facility","revolver drawdown",
-          "debt repayment","debt buyback","debt restructuring","increased borrowing","leverage ratio",
-          "covenant amendment","waiver granted","loan amendment","bridge loan","emergency funding",
-          "capital raise","equity issuance","private placement","convertible debt","capital injection",
-          "funding shortfall","lender negotiations","funding crisis","debt maturity extension",
-          "credit agreement","revolving credit facility","term loan b","new loan facility"
-        ]
-      },
-      "Operational Risk Indicators": {
-        severity: 6,
-        terms: [
-          "plant closure","factory shutdown","layoffs","workforce reduction","job cuts","furloughs","strike",
-          "labor dispute","supply chain disruption","production halt","operational disruption",
-          "system outage","cyberattack","data breach","business interruption","facility damage",
-          "major recall","product defect","quality issue","store closures","facility closures",
-          "shutdown announcement","business shutdown","closing operations","mass layoffs","headcount reduction"
-        ]
-      },
-      "Ownership & Insider Activity": {
-        severity: 5,
-        terms: [
-          "insider buying","insider selling","insider sale","executive stock sale","director sold shares",
-          "officer sold shares","form 4 filing","beneficial ownership filing","change in ownership",
-          "change of control","shareholder dilution","ownership transferred","proxy contest"
-        ]
-      },
-      "Tender Offers, Notes, Bonds & Capital Markets": {
-        severity: 6,
-        terms: [
-          "tender offer","exchange offer","debt tender offer","bond tender offer","senior notes",
-          "senior secured notes","senior unsecured notes","subordinated notes","convertible notes",
-          "corporate bonds","notes offering","debt exchange offer","debt repurchase","tender for notes",
-          "bondholder negotiations","missed coupon payment","default on bonds","debt maturity wall"
-        ]
-      },
-      "Executive & Officer Changes": {
-        severity: 5,
-        terms: [
-          "ceo resignation","ceo departure","ceo replaced","cfo resignation","executive turnover",
-          "management shakeup","board changes","director resignation","interim ceo","sudden executive exit",
-          "leadership uncertainty","executive misconduct","change in major officers","officer resignation"
-        ]
-      },
-      "Large Projects & Capital Risk": {
-        severity: 5,
-        terms: [
-          "major project announced","large capital project","project financing","construction delay","cost overruns",
-          "project delay","budget overrun","funding gap","project halted","project cancellation",
-          "capex spike","capex reduction","construction risk","execution risk","over budget","regulatory delay"
-        ]
-      },
-      "Share Repurchases & Equity Actions": {
-        severity: 4,
-        terms: [
-          "share repurchase","stock buyback","repurchase program","buyback suspension","equity issuance",
-          "stock offering","secondary offering","dilution risk","capital raise","rights offering",
-          "dividend suspension","dividend cut","share dilution","delisting risk","trading halt"
-        ]
-      },
-      "Positive Credit Signals": {
-        severity: -3,
-        terms: [
-          "rating upgraded","credit upgrade","positive outlook","debt reduction","deleveraging","record revenue",
-          "strong liquidity","improved margins","budget surplus","grant awarded","contract awarded","new funding",
-          "capital investment","refinanced debt","improved financial position","debt paid down","strong cash flow"
-        ]
-      }
-    };
-
-    let lastResults = [];
-    let parsedChunkCount = 0;
-    let expandedRawId = null;
-
-    // -----------------------------
-    // Helpers
-    // -----------------------------
-    function setStatus(message = "", type = "") {
-      const box = document.getElementById("statusBox");
-      box.className = "status";
-      box.textContent = "";
-      if (!message) return;
-      box.textContent = message;
-      box.classList.add(type === "error" ? "error" : "ok");
-    }
-
-    function escapeHtml(str) {
-      return String(str)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;");
-    }
-
-    function normalize(text) {
-      return String(text || "")
-        .replace(/&amp;/g, "&")
-        .replace(/\r/g, "\n")
-        .replace(/[ \t]+/g, " ")
-        .replace(/\n{3,}/g, "\n\n")
-        .trim();
-    }
-
-    function stripHtml(text) {
-      return String(text || "")
-        .replace(/<style[\s\S]*?<\/style>/gi, " ")
-        .replace(/<script[\s\S]*?<\/script>/gi, " ")
-        .replace(/<[^>]+>/g, " ")
-        .replace(/&nbsp;/gi, " ")
-        .replace(/&amp;/gi, "&")
-        .replace(/&quot;/gi, '"')
-        .replace(/&#39;/gi, "'")
-        .replace(/\s+/g, " ")
-        .trim();
-    }
-
-    function cleanEmailText(text) {
-      let t = String(text || "");
-
-      t = t.replace(/=\r?\n/g, "");
-      t = t.replace(/=3D/g, "=");
-
-      t = t.replace(/^(From|To|Cc|Bcc|Subject|Date|Reply-To|Return-Path|Received|MIME-Version|Content-Type|Content-Transfer-Encoding):.*$/gim, "");
-
-      t = stripHtml(t);
-
-      t = t.split("\n").filter(line => {
-        const l = line.trim();
-        if (!l) return true;
-        return !GOOGLE_NOISE_PATTERNS.some(p => p.test(l));
-      }).join("\n");
-
-      return normalize(t);
-    }
-
-    function escapeRegExp(s) {
-      return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    }
-
-    function termRegex(term) {
-      const escaped = escapeRegExp(String(term).trim());
-      return new RegExp("(^|[^a-zA-Z0-9])" + escaped + "([^a-zA-Z0-9]|$)", "i");
-    }
-
-    function extractUrls(text) {
-      return text.match(/https?:\/\/[^\s)\]}>\"']+/g) || [];
-    }
-
-    function domainFromUrl(url) {
-      try {
-        return new URL(url).hostname.replace(/^www\./, "");
-      } catch {
-        return "";
-      }
-    }
-
-    function titleGuess(text) {
-      const lines = text.split("\n").map(x => x.trim()).filter(Boolean);
-      const line = lines.find(l => !/^https?:\/\//i.test(l) && l.length > 10) || lines[0] || "Untitled alert item";
-      return line.slice(0, 190);
-    }
-
-    function excerpt(text, n = 420) {
-      const clean = text.replace(/\s+/g, " ").trim();
-      return clean.length <= n ? clean : clean.slice(0, n).replace(/\s+\S*$/, "") + "...";
-    }
-
-    function detectEntities(text, watchlistText) {
-      const lower = text.toLowerCase();
-      const entities = [];
-
-      String(watchlistText || "")
-        .split(/\n|,|;/)
-        .map(x => x.trim())
-        .filter(Boolean)
-        .forEach(entity => {
-          if (lower.includes(entity.toLowerCase())) entities.push(entity);
-        });
-
-      const patterns = [
-        /\bCity of [A-Z][A-Za-z .'-]+/g,
-        /\bTown of [A-Z][A-Za-z .'-]+/g,
-        /\bVillage of [A-Z][A-Za-z .'-]+/g,
-        /\b[A-Z][A-Za-z .'-]+ County\b/g,
-        /\b[A-Z][A-Za-z .'-]+ School District\b/g,
-        /\b[A-Z][A-Za-z .'-]+ Water Authority\b/g,
-        /\b[A-Z][A-Za-z .'-]+ Utility District\b/g,
-        /\b[A-Z][A-Za-z .'-]+ Hospital\b/g,
-        /\b[A-Z][A-Za-z .'-]+ Medical Center\b/g,
-        /\b[A-Z][A-Za-z .'-]+ Authority\b/g,
-        /\b[A-Z][A-Za-z .'-]+ Cooperative\b/g,
-        /\bGroup 1 Automotive\b/gi,
-        /\bLithia UK\b/gi
-      ];
-
-      patterns.forEach(p => {
-        const matches = text.match(p) || [];
-        matches.forEach(x => entities.push(x.trim().replace(/[.,;:]$/, "")));
+<script>
+  if (window.pdfjsLib) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  }
+
+  const PRIORITY_RANK = {
+    "High": 4,
+    "Medium": 3,
+    "Low": 2,
+    "Positive / Monitor": 1,
+    "Ignore": 0
+  };
+
+  const GOOGLE_NOISE_PATTERNS = [
+    /manage your alerts/i,
+    /unsubscribe/i,
+    /google alerts/i,
+    /see more results/i,
+    /edit this alert/i,
+    /you have received this email/i,
+    /rss feed/i,
+    /flag as irrelevant/i,
+    /view all your alerts/i,
+    /send feedback/i,
+    /facebook/i,
+    /twitter/i,
+    /external email/i,
+    /CAUTION:/i,
+    /do not click links/i,
+    /contact the .* help desk/i
+  ];
+
+  const SOURCE_NOISE_PATTERNS = [
+    /investing\.com/i,
+    /benzinga/i
+  ];
+
+  const LOW_VALUE_PATTERNS = [
+    /people also watch/i,
+    /compare against competitors/i,
+    /summary table/i,
+    /corporate event calendar/i,
+    /price total return/i,
+    /net income to common/i,
+    /stock price/i,
+    /quote/i
+  ];
+
+  const SOURCE_WEIGHTS = [
+    { pattern: /sec\.gov|ftc\.gov|doj\.gov|emma\.msrb\.org|moodys|fitchratings|spglobal|krollbondratings|kbra/i, boost: 4, label: "Primary / regulatory / rating source" },
+    { pattern: /reuters|bloomberg|wsj|ft\.com|apnews|prnewswire|businesswire|globenewswire/i, boost: 2, label: "Financial/newswire source" }
+  ];
+
+  const KEYWORD_LIBRARY = {
+    "Bankruptcy & Insolvency": {
+      severity: 10,
+      terms: [
+        "bankruptcy","filed for bankruptcy","chapter 7","chapter 11","chapter 13","insolvency","insolvent",
+        "liquidation","receivership","restructuring","debt restructuring","financial distress",
+        "debtor-in-possession","dip financing","out-of-court restructuring","moratorium on payments"
+      ]
+    },
+    "Credit Deterioration & Default": {
+      severity: 9,
+      terms: [
+        "default","payment default","missed payment","past due","delinquent","loan default",
+        "covenant breach","technical default","rating downgrade","credit downgrade","negative outlook",
+        "credit watch","creditwatch","distressed exchange","collections action","write-off","charge-off",
+        "increased leverage","liquidity pressures","financial weakness","refinancing risk","bond default",
+        "going concern warning","liquidity shortfall","cash flow problems"
+      ]
+    },
+    "Corporate Actions": {
+      severity: 5,
+      terms: [
+        "merger","acquisition","m&a","takeover","buyout","asset sale","divestiture","sale of business",
+        "spin-off","spinoff","carve-out","ownership change","change in control","strategic alternatives",
+        "exploring sale","stake sale","majority acquisition","minority investment"
+      ]
+    },
+    "Legal & Regulatory Issues": {
+      severity: 7,
+      terms: [
+        "lawsuit","litigation","legal action","class action","court ruling","judgment","settlement",
+        "regulatory investigation","sec investigation","ftc","doj investigation","enforcement action",
+        "penalty","fine imposed","compliance violation","fraud allegations","accounting fraud",
+        "financial restatement","material weakness","subpoena","criminal charges","civil charges",
+        "license revoked","permit revoked","cease and desist order","antitrust investigation","indictment"
+      ]
+    },
+    "Financial Performance Warning Signs": {
+      severity: 7,
+      terms: [
+        "earnings miss","revenue decline","profit decline","net loss","operating loss","negative ebitda",
+        "margin compression","declining sales","weak outlook","reduced guidance","lowered forecast",
+        "declining cash flow","cash burn","liquidity concerns","weak demand","lower volumes",
+        "negative free cash flow","poor financial results","declining profitability","financial strain"
+      ]
+    },
+    "Financing & Debt Activity": {
+      severity: 6,
+      terms: [
+        "bond issuance","loan refinancing","refinancing delay","credit facility","revolver drawdown",
+        "debt repayment","debt buyback","debt restructuring","increased borrowing","leverage ratio",
+        "covenant amendment","waiver granted","loan amendment","bridge loan","emergency funding",
+        "capital raise","equity issuance","private placement","convertible debt","capital injection",
+        "funding shortfall","lender negotiations","funding crisis","debt maturity extension",
+        "credit agreement","revolving credit facility","term loan b","new loan facility"
+      ]
+    },
+    "Operational Risk Indicators": {
+      severity: 6,
+      terms: [
+        "plant closure","factory shutdown","layoffs","workforce reduction","job cuts","furloughs","strike",
+        "labor dispute","supply chain disruption","production halt","operational disruption",
+        "system outage","cyberattack","data breach","business interruption","facility damage",
+        "major recall","product defect","quality issue","store closures","facility closures",
+        "shutdown announcement","business shutdown","closing operations","mass layoffs","headcount reduction"
+      ]
+    },
+    "Ownership & Insider Activity": {
+      severity: 5,
+      terms: [
+        "insider buying","insider selling","insider sale","executive stock sale","director sold shares",
+        "officer sold shares","form 4 filing","beneficial ownership filing","change in ownership",
+        "change of control","shareholder dilution","ownership transferred","proxy contest"
+      ]
+    },
+    "Tender Offers, Notes, Bonds & Capital Markets": {
+      severity: 6,
+      terms: [
+        "tender offer","exchange offer","debt tender offer","bond tender offer","senior notes",
+        "senior secured notes","senior unsecured notes","subordinated notes","convertible notes",
+        "corporate bonds","notes offering","debt exchange offer","debt repurchase","tender for notes",
+        "bondholder negotiations","missed coupon payment","default on bonds","debt maturity wall"
+      ]
+    },
+    "Executive & Officer Changes": {
+      severity: 5,
+      terms: [
+        "ceo resignation","ceo departure","ceo replaced","cfo resignation","executive turnover",
+        "management shakeup","board changes","director resignation","interim ceo","sudden executive exit",
+        "leadership uncertainty","executive misconduct","change in major officers","officer resignation"
+      ]
+    },
+    "Large Projects & Capital Risk": {
+      severity: 5,
+      terms: [
+        "major project announced","large capital project","project financing","construction delay","cost overruns",
+        "project delay","budget overrun","funding gap","project halted","project cancellation",
+        "capex spike","capex reduction","construction risk","execution risk","over budget","regulatory delay"
+      ]
+    },
+    "Share Repurchases & Equity Actions": {
+      severity: 4,
+      terms: [
+        "share repurchase","stock buyback","repurchase program","buyback suspension","equity issuance",
+        "stock offering","secondary offering","dilution risk","capital raise","rights offering",
+        "dividend suspension","dividend cut","share dilution","delisting risk","trading halt"
+      ]
+    },
+    "Positive Credit Signals": {
+      severity: -3,
+      terms: [
+        "rating upgraded","credit upgrade","positive outlook","debt reduction","deleveraging","record revenue",
+        "strong liquidity","improved margins","budget surplus","grant awarded","contract awarded","new funding",
+        "capital investment","refinanced debt","improved financial position","debt paid down","strong cash flow"
+      ]
+    }
+  };
+
+  let lastResults = [];
+  let parsedChunkCount = 0;
+  let expandedRawId = null;
+
+  function setStatus(message = "", type = "") {
+    const box = document.getElementById("statusBox");
+    if (!box) return;
+    box.className = "status";
+    box.textContent = "";
+    if (!message) return;
+    box.textContent = message;
+    box.classList.add(type === "error" ? "error" : "ok");
+  }
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function normalize(text) {
+    return String(text || "")
+      .replace(/&amp;/g, "&")
+      .replace(/\r/g, "\n")
+      .replace(/[ \t]+/g, " ")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
+  function stripHtml(text) {
+    return String(text || "")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;/gi, "'")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function cleanEmailText(text) {
+    let t = String(text || "");
+
+    // quoted-printable cleanup
+    t = t.replace(/=\r?\n/g, "");
+    t = t.replace(/=3D/g, "=");
+
+    // strip common email headers
+    t = t.replace(/^(From|To|Cc|Bcc|Subject|Date|Reply-To|Return-Path|Received|MIME-Version|Content-Type|Content-Transfer-Encoding):.*$/gim, "");
+
+    // strip html if present
+    t = stripHtml(t);
+
+    // remove alert noise line-by-line
+    t = t.split("\n").filter(line => {
+      const l = line.trim();
+      if (!l) return true;
+      return !GOOGLE_NOISE_PATTERNS.some(p => p.test(l));
+    }).join("\n");
+
+    return normalize(t);
+  }
+
+  function escapeRegExp(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function termRegex(term) {
+    const escaped = escapeRegExp(String(term).trim());
+    return new RegExp("(^|[^a-zA-Z0-9])" + escaped + "([^a-zA-Z0-9]|$)", "i");
+  }
+
+  function extractUrls(text) {
+    return text.match(/https?:\/\/[^\s)\]}>\"']+/g) || [];
+  }
+
+  function domainFromUrl(url) {
+    try {
+      return new URL(url).hostname.replace(/^www\./, "");
+    } catch {
+      return "";
+    }
+  }
+
+  function titleGuess(text) {
+    const lines = text.split("\n").map(x => x.trim()).filter(Boolean);
+    const line = lines.find(l => !/^https?:\/\//i.test(l) && l.length > 10) || lines[0] || "Untitled alert item";
+    return line.slice(0, 190);
+  }
+
+  function excerpt(text, n = 420) {
+    const clean = text.replace(/\s+/g, " ").trim();
+    return clean.length <= n ? clean : clean.slice(0, n).replace(/\s+\S*$/, "") + "...";
+  }
+
+  function detectEntities(text, watchlistText) {
+    const lower = text.toLowerCase();
+    const entities = [];
+
+    String(watchlistText || "")
+      .split(/\n|,|;/)
+      .map(x => x.trim())
+      .filter(Boolean)
+      .forEach(entity => {
+        if (lower.includes(entity.toLowerCase())) entities.push(entity);
       });
 
-      return [...new Set(entities.map(x => x.trim()))];
+    const patterns = [
+      /\bCity of [A-Z][A-Za-z .'-]+/g,
+      /\bTown of [A-Z][A-Za-z .'-]+/g,
+      /\bVillage of [A-Z][A-Za-z .'-]+/g,
+      /\b[A-Z][A-Za-z .'-]+ County\b/g,
+      /\b[A-Z][A-Za-z .'-]+ School District\b/g,
+      /\b[A-Z][A-Za-z .'-]+ Water Authority\b/g,
+      /\b[A-Z][A-Za-z .'-]+ Utility District\b/g,
+      /\b[A-Z][A-Za-z .'-]+ Hospital\b/g,
+      /\b[A-Z][A-Za-z .'-]+ Medical Center\b/g,
+      /\b[A-Z][A-Za-z .'-]+ Authority\b/g,
+      /\b[A-Z][A-Za-z .'-]+ Cooperative\b/g,
+      /\bGroup 1 Automotive\b/gi,
+      /\bLithia UK\b/gi
+    ];
+
+    patterns.forEach(p => {
+      const matches = text.match(p) || [];
+      matches.forEach(x => entities.push(x.trim().replace(/[.,;:]$/, "")));
+    });
+
+    return [...new Set(entities.map(x => x.trim()))];
+  }
+
+  function extractGoogleAlertArticles(rawText) {
+    const text = cleanEmailText(rawText);
+    const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
+
+    const articles = [];
+    let i = 0;
+
+    while (i < lines.length) {
+      const line = lines[i];
+
+      // pattern: "Title - Source https://url"
+      const hasUrl = /https?:\/\//i.test(line);
+      const titleLike = line.length > 20;
+
+      if (hasUrl && titleLike) {
+        const urlMatch = line.match(/https?:\/\/\S+/i);
+        const url = urlMatch ? urlMatch[0] : "";
+        const titlePart = line.replace(url, "").trim();
+
+        let source = "";
+        let snippet = "";
+        let j = i + 1;
+
+        if (j < lines.length && lines[j].length < 120) {
+          source = lines[j];
+          j++;
+        }
+
+        while (j < lines.length) {
+          const next = lines[j];
+          if (/https?:\/\//i.test(next) && next.length > 20) break;
+          if (GOOGLE_NOISE_PATTERNS.some(p => p.test(next))) break;
+          snippet += (snippet ? " " : "") + next;
+          j++;
+          if (snippet.length > 500) break;
+        }
+
+        articles.push({
+          title: titlePart,
+          source,
+          snippet: snippet.trim(),
+          url,
+          raw: [titlePart, source, snippet, url].filter(Boolean).join("\n")
+        });
+
+        i = j;
+        continue;
+      }
+
+      i++;
     }
 
-    // -----------------------------
-    // Article extraction
-    // -----------------------------
-    function extractGoogleAlertArticles(rawText) {
-      const text = cleanEmailText(rawText);
-      const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
-
-      const articles = [];
-      let i = 0;
-
-      while (i < lines.length) {
-        const line = lines[i];
-        const hasUrl = /https?:\/\//i.test(line);
-        const titleLike = line.length > 20;
-
-        if (hasUrl && titleLike) {
-          const urlMatch = line.match(/https?:\/\/\S+/i);
-          const url = urlMatch ? urlMatch[0] : "";
-          const titlePart = line.replace(url, "").trim();
-
-          let source = "";
-          let snippet = "";
-          let j = i + 1;
-
-          if (j < lines.length && lines[j].length < 120) {
-            source = lines[j];
-            j++;
-          }
-
-          while (j < lines.length) {
-            const next = lines[j];
-            if (/https?:\/\//i.test(next) && next.length > 20) break;
-            if (GOOGLE_NOISE_PATTERNS.some(p => p.test(next))) break;
-            snippet += (snippet ? " " : "") + next;
-            j++;
-            if (snippet.length > 500) break;
-          }
-
+    // fallback if parser misses structure
+    if (!articles.length) {
+      const chunks = text.split(/\n\s*\n/).map(x => x.trim()).filter(x => x.length > 80);
+      chunks.forEach(chunk => {
+        const urls = extractUrls(chunk);
+        if (urls.length) {
           articles.push({
-            title: titlePart,
-            source,
-            snippet: snippet.trim(),
-            url,
-            raw: [titlePart, source, snippet, url].filter(Boolean).join("\n")
+            title: titleGuess(chunk),
+            source: "",
+            snippet: excerpt(chunk, 280),
+            url: urls[0],
+            raw: chunk
           });
+        }
+      });
+    }
 
-          i = j;
-          continue;
+    return articles;
+  }
+
+  function isLowValueArticle(article) {
+    const combined = [article.title, article.source, article.snippet].join(" ").toLowerCase();
+
+    if (GOOGLE_NOISE_PATTERNS.some(p => p.test(combined))) return true;
+    if (LOW_VALUE_PATTERNS.some(p => p.test(combined))) return true;
+
+    // suppress low-value finance table/calendar pages unless they also hit real credit terms
+    if (SOURCE_NOISE_PATTERNS.some(p => p.test(article.source)) || SOURCE_NOISE_PATTERNS.some(p => p.test(article.url))) {
+      const hasRealCreditSignal =
+        /(lawsuit|investigation|fraud|subpoena|default|bankruptcy|liquidity|downgrade|layoffs|closure|asset sale|divestiture|acquisition|debt|refinancing|credit facility|ftc|doj|sec)/i
+          .test(combined);
+      if (!hasRealCreditSignal) return true;
+    }
+
+    return false;
+  }
+
+  function scoreArticle(article, watchlistText) {
+    const text = [article.title, article.source, article.snippet].join(" ");
+    let score = 0;
+    const categories = [];
+    const matches = {};
+
+    Object.entries(KEYWORD_LIBRARY).forEach(([category, config]) => {
+      const hits = [];
+      config.terms.forEach(term => {
+        if (termRegex(term).test(text)) hits.push(term);
+      });
+
+      if (hits.length) {
+        categories.push(category);
+        matches[category] = [...new Set(hits)];
+        score += Number(config.severity || 5) + Math.min(hits.length, 6);
+      }
+    });
+
+    const domain = article.url ? domainFromUrl(article.url) : "";
+    let sourceLabel = article.source || domain || "Standard source";
+
+    SOURCE_WEIGHTS.forEach(src => {
+      if (src.pattern.test(domain) || src.pattern.test(article.source) || src.pattern.test(text)) {
+        score += src.boost;
+        sourceLabel = src.label;
+      }
+    });
+
+    const entities = detectEntities(text, watchlistText);
+    if (entities.length > 0) score += 3;
+    if (categories.length >= 2) score += 2;
+
+    return { score, categories, matches, entities, sourceLabel };
+  }
+
+  function priority(score, categories) {
+    const severe = [
+      "Bankruptcy & Insolvency",
+      "Credit Deterioration & Default",
+      "Legal & Regulatory Issues"
+    ];
+
+    if (categories.includes("Bankruptcy & Insolvency")) return "High";
+    if (categories.some(c => severe.includes(c)) && score >= 12) return "High";
+    if (score >= 16) return "High";
+    if (score >= 9) return "Medium";
+    if (score >= 4) return "Low";
+    if (score < 0) return "Positive / Monitor";
+    return "Ignore";
+  }
+
+  function riskReason(row) {
+    if (row.categories.includes("Bankruptcy & Insolvency")) return "Bankruptcy or insolvency language detected.";
+    if (row.categories.includes("Credit Deterioration & Default")) return "Default, downgrade, covenant, liquidity, or payment stress detected.";
+    if (row.categories.includes("Legal & Regulatory Issues")) return "Legal, FTC/DOJ/SEC, compliance, or investigation risk detected.";
+    if (row.categories.includes("Corporate Actions")) return "Asset sale, divestiture, acquisition, or strategic transaction detected.";
+    if (row.categories.includes("Financing & Debt Activity")) return "Debt, refinancing, credit agreement, or funding activity detected.";
+    if (row.categories.includes("Operational Risk Indicators")) return "Operational disruption, closures, layoffs, or cyber risk detected.";
+    if (row.categories.includes("Positive Credit Signals")) return "Possible positive credit signal.";
+    return "Potentially relevant for credit review.";
+  }
+
+  function normalizeTokens(text) {
+    return String(text || "")
+      .toLowerCase()
+      .replace(/group 1 automotive/g, "group1")
+      .replace(/lithia uk/g, "lithiauk")
+      .replace(/jaguar land rover/g, "jlr")
+      .replace(/acquires?|acquired|acquisition/g, "acquire")
+      .replace(/sells?|sold|sale|dispose|disposed|divestiture/g, "sell")
+      .replace(/dealerships?/g, "dealer")
+      .replace(/sites?/g, "site")
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter(Boolean)
+      .filter(t => t.length > 2)
+      .filter(t => !["the","and","for","with","from","into","over","here","are","all","this","that","has","have","will","its","inc","news","group"].includes(t));
+  }
+
+  function articleEventKey(row) {
+    const text = [row.title, row.excerpt, row.entities.join(" ")].join(" ");
+    const tokens = normalizeTokens(text);
+
+    const importantTokens = [];
+    const mustKeep = ["group1","lithiauk","jlr","ftc","deceptive","pricing","lawsuit","investigation","sell","acquire","dealer","site","asset","divestiture","regulatory"];
+    mustKeep.forEach(t => {
+      if (tokens.includes(t)) importantTokens.push(t);
+    });
+
+    // fallback tokens
+    tokens.forEach(t => {
+      if (!importantTokens.includes(t) && importantTokens.length < 6) importantTokens.push(t);
+    });
+
+    return importantTokens.slice(0, 6).sort().join("|");
+  }
+
+  function dedupeGrouped(rows) {
+    const groups = {};
+
+    rows.forEach(row => {
+      const key = articleEventKey(row);
+      if (!groups[key]) {
+        groups[key] = { ...row, sourceCount: 1, sourceDomains: row.domain ? [row.domain] : [] };
+      } else {
+        groups[key].score = Math.max(groups[key].score, row.score);
+        groups[key].sourceCount += 1;
+        if (row.domain && !groups[key].sourceDomains.includes(row.domain)) {
+          groups[key].sourceDomains.push(row.domain);
         }
 
-        i++;
-      }
+        // keep richer title/snippet if longer
+        if (row.title.length > groups[key].title.length) groups[key].title = row.title;
+        if (row.excerpt.length > groups[key].excerpt.length) groups[key].excerpt = row.excerpt;
 
-      if (!articles.length) {
-        const chunks = text.split(/\n\s*\n/).map(x => x.trim()).filter(x => x.length > 80);
-        chunks.forEach(chunk => {
-          const urls = extractUrls(chunk);
-          if (urls.length) {
-            articles.push({
-              title: titleGuess(chunk),
-              source: "",
-              snippet: excerpt(chunk, 280),
-              url: urls[0],
-              raw: chunk
-            });
-          }
+        // merge matches/categories/entities
+        groups[key].categories = [...new Set([...groups[key].categories, ...row.categories])];
+        groups[key].entities = [...new Set([...groups[key].entities, ...row.entities])];
+
+        Object.entries(row.matches).forEach(([cat, hits]) => {
+          if (!groups[key].matches[cat]) groups[key].matches[cat] = [];
+          groups[key].matches[cat] = [...new Set([...groups[key].matches[cat], ...hits])];
         });
+
+        // prefer a more meaningful source url if current one is empty
+        if (!groups[key].url && row.url) groups[key].url = row.url;
+        if (!groups[key].domain && row.domain) groups[key].domain = row.domain;
       }
+    });
 
-      return articles;
-    }
-
-    function isLowValueArticle(article) {
-      const combined = [article.title, article.source, article.snippet].join(" ").toLowerCase();
-
-      if (GOOGLE_NOISE_PATTERNS.some(p => p.test(combined))) return true;
-      if (LOW_VALUE_PATTERNS.some(p => p.test(combined))) return true;
-
-      if (SOURCE_NOISE_PATTERNS.some(p => p.test(article.source)) || SOURCE_NOISE_PATTERNS.some(p => p.test(article.url))) {
-        const hasRealCreditSignal =
-          /(lawsuit|investigation|fraud|subpoena|default|bankruptcy|liquidity|downgrade|layoffs|closure|asset sale|divestiture|acquisition|debt|refinancing|credit facility|ftc|doj|sec)/i
-            .test(combined);
-        if (!hasRealCreditSignal) return true;
+    const deduped = Object.values(groups).map(row => {
+      if (row.sourceCount > 1) {
+        row.reason += ` Duplicate story grouped (${row.sourceCount} sources).`;
       }
+      row.priority = priority(row.score, row.categories);
+      return row;
+    });
 
-      return false;
-    }
+    return deduped;
+  }
 
-    // -----------------------------
-    // Scoring
-    // -----------------------------
-    function scoreArticle(article, watchlistText) {
-      const text = [article.title, article.source, article.snippet].join(" ");
-      let score = 0;
-      const categories = [];
-      const matches = {};
+  function analyze(rawText, watchlistText, minPriority, categoryFilter, query, sortBy) {
+    const articles = extractGoogleAlertArticles(rawText);
+    parsedChunkCount = articles.length;
 
-      Object.entries(KEYWORD_LIBRARY).forEach(([category, config]) => {
-        const hits = [];
-        config.terms.forEach(term => {
-          if (termRegex(term).test(text)) hits.push(term);
-        });
+    const rows = articles
+      .filter(article => !isLowValueArticle(article))
+      .map((article, idx) => {
+        const scored = scoreArticle(article, watchlistText);
+        const pri = priority(scored.score, scored.categories);
 
-        if (hits.length) {
-          categories.push(category);
-          matches[category] = [...new Set(hits)];
-          score += Number(config.severity || 5) + Math.min(hits.length, 6);
-        }
-      });
+        const row = {
+          id: idx + 1,
+          priority: pri,
+          score: scored.score,
+          title: article.title,
+          entities: scored.entities,
+          categories: scored.categories,
+          matches: scored.matches,
+          sourceLabel: scored.sourceLabel,
+          reason: "",
+          url: article.url || "",
+          domain: article.url ? domainFromUrl(article.url) : "",
+          excerpt: article.snippet || excerpt(article.raw),
+          raw: article.raw || [article.title, article.source, article.snippet, article.url].filter(Boolean).join("\n")
+        };
 
-      const domain = article.url ? domainFromUrl(article.url) : "";
-      let sourceLabel = article.source || domain || "Standard source";
-
-      SOURCE_WEIGHTS.forEach(src => {
-        if (src.pattern.test(domain) || src.pattern.test(article.source) || src.pattern.test(text)) {
-          score += src.boost;
-          sourceLabel = src.label;
-        }
-      });
-
-      const entities = detectEntities(text, watchlistText);
-      if (entities.length > 0) score += 3;
-      if (categories.length >= 2) score += 2;
-
-      return { score, categories, matches, entities, sourceLabel };
-    }
-
-    function priority(score, categories) {
-      const severe = [
-        "Bankruptcy & Insolvency",
-        "Credit Deterioration & Default",
-        "Legal & Regulatory Issues"
-      ];
-
-      if (categories.includes("Bankruptcy & Insolvency")) return "High";
-      if (categories.some(c => severe.includes(c)) && score >= 12) return "High";
-      if (score >= 16) return "High";
-      if (score >= 9) return "Medium";
-      if (score >= 4) return "Low";
-      if (score < 0) return "Positive / Monitor";
-      return "Ignore";
-    }
-
-    function riskReason(row) {
-      if (row.categories.includes("Bankruptcy & Insolvency")) return "Bankruptcy or insolvency language detected.";
-      if (row.categories.includes("Credit Deterioration & Default")) return "Default, downgrade, covenant, liquidity, or payment stress detected.";
-      if (row.categories.includes("Legal & Regulatory Issues")) return "Legal, FTC/DOJ/SEC, compliance, or investigation risk detected.";
-      if (row.categories.includes("Corporate Actions")) return "Asset sale, divestiture, acquisition, or strategic transaction detected.";
-      if (row.categories.includes("Financing & Debt Activity")) return "Debt, refinancing, credit agreement, or funding activity detected.";
-      if (row.categories.includes("Operational Risk Indicators")) return "Operational disruption, closures, layoffs, or cyber risk detected.";
-      if (row.categories.includes("Positive Credit Signals")) return "Possible positive credit signal.";
-      return "Potentially relevant for credit review.";
-    }
-
-    // -----------------------------
-    // Duplicate story grouping
-    // -----------------------------
-    function normalizeTokens(text) {
-      return String(text || "")
-        .toLowerCase()
-        .replace(/group 1 automotive/g, "group1")
-        .replace(/lithia uk/g, "lithiauk")
-        .replace(/jaguar land rover/g, "jlr")
-        .replace(/acquires?|acquired|acquisition/g, "acquire")
-        .replace(/sells?|sold|sale|dispose|disposed|divestiture/g, "sell")
-        .replace(/dealerships?/g, "dealer")
-        .replace(/sites?/g, "site")
-        .replace(/[^a-z0-9\s]/g, " ")
-        .split(/\s+/)
-        .filter(Boolean)
-        .filter(t => t.length > 2)
-        .filter(t => !["the","and","for","with","from","into","over","here","are","all","this","that","has","have","will","its","inc","news","group"].includes(t));
-    }
-
-    function articleEventKey(row) {
-      const text = [row.title, row.excerpt, row.entities.join(" ")].join(" ");
-      const tokens = normalizeTokens(text);
-
-      const importantTokens = [];
-      const mustKeep = ["group1","lithiauk","jlr","ftc","deceptive","pricing","lawsuit","investigation","sell","acquire","dealer","site","asset","divestiture","regulatory"];
-      mustKeep.forEach(t => {
-        if (tokens.includes(t)) importantTokens.push(t);
-      });
-
-      tokens.forEach(t => {
-        if (!importantTokens.includes(t) && importantTokens.length < 6) importantTokens.push(t);
-      });
-
-      return importantTokens.slice(0, 6).sort().join("|");
-    }
-
-    function dedupeGrouped(rows) {
-      const groups = {};
-
-      rows.forEach(row => {
-        const key = articleEventKey(row);
-        if (!groups[key]) {
-          groups[key] = { ...row, sourceCount: 1, sourceDomains: row.domain ? [row.domain] : [] };
-        } else {
-          groups[key].score = Math.max(groups[key].score, row.score);
-          groups[key].sourceCount += 1;
-
-          if (row.domain && !groups[key].sourceDomains.includes(row.domain)) {
-            groups[key].sourceDomains.push(row.domain);
-          }
-
-          if (row.title.length > groups[key].title.length) groups[key].title = row.title;
-          if (row.excerpt.length > groups[key].excerpt.length) groups[key].excerpt = row.excerpt;
-
-          groups[key].categories = [...new Set([...groups[key].categories, ...row.categories])];
-          groups[key].entities = [...new Set([...groups[key].entities, ...row.entities])];
-
-          Object.entries(row.matches).forEach(([cat, hits]) => {
-            if (!groups[key].matches[cat]) groups[key].matches[cat] = [];
-            groups[key].matches[cat] = [...new Set([...groups[key].matches[cat], ...hits])];
-          });
-
-          if (!groups[key].url && row.url) groups[key].url = row.url;
-          if (!groups[key].domain && row.domain) groups[key].domain = row.domain;
-        }
-      });
-
-      const deduped = Object.values(groups).map(row => {
-        if (row.sourceCount > 1) {
-          row.reason += ` Duplicate story grouped (${row.sourceCount} sources).`;
-        }
-        row.priority = priority(row.score, row.categories);
+        row.reason = riskReason(row);
         return row;
       });
 
-      return deduped;
+    let deduped = dedupeGrouped(rows)
+      .filter(x => PRIORITY_RANK[x.priority] >= PRIORITY_RANK[minPriority])
+      .filter(x => categoryFilter === "All categories" || x.categories.includes(categoryFilter));
+
+    const q = String(query || "").toLowerCase().trim();
+    if (q) {
+      deduped = deduped.filter(r =>
+        [
+          r.title, r.excerpt, r.priority, r.reason,
+          r.categories.join(" "), r.entities.join(" "),
+          r.domain, JSON.stringify(r.matches)
+        ].join(" ").toLowerCase().includes(q)
+      );
     }
 
-    // -----------------------------
-    // Main analysis
-    // -----------------------------
-    function analyze(rawText, watchlistText, minPriority, categoryFilter, query, sortBy) {
-      const articles = extractGoogleAlertArticles(rawText);
-      parsedChunkCount = articles.length;
-
-      const rows = articles
-        .filter(article => !isLowValueArticle(article))
-        .map((article, idx) => {
-          const scored = scoreArticle(article, watchlistText);
-          const pri = priority(scored.score, scored.categories);
-
-          const row = {
-            id: idx + 1,
-            priority: pri,
-            score: scored.score,
-            title: article.title,
-            entities: scored.entities,
-            categories: scored.categories,
-            matches: scored.matches,
-            sourceLabel: scored.sourceLabel,
-            reason: "",
-            url: article.url || "",
-            domain: article.url ? domainFromUrl(article.url) : "",
-            excerpt: article.snippet || excerpt(article.raw),
-            raw: article.raw || [article.title, article.source, article.snippet, article.url].filter(Boolean).join("\n")
-          };
-
-          row.reason = riskReason(row);
-          return row;
-        });
-
-      let deduped = dedupeGrouped(rows)
-        .filter(x => PRIORITY_RANK[x.priority] >= PRIORITY_RANK[minPriority])
-        .filter(x => categoryFilter === "All categories" || x.categories.includes(categoryFilter));
-
-      const q = String(query || "").toLowerCase().trim();
-      if (q) {
-        deduped = deduped.filter(r =>
-          [
-            r.title, r.excerpt, r.priority, r.reason,
-            r.categories.join(" "), r.entities.join(" "),
-            r.domain, JSON.stringify(rLowerCase().includes(q)
-        );
-      }
-
-      if (sortBy === "score") {
-        deduped.sort((a, b) => b.score - a.score);
-      } else if (sortBy === "title") {
-        deduped.sort((a, b) => a.title.localeCompare(b.title));
-      } else {
-        deduped.sort((a, b) =>
-          PRIORITY_RANK[b.priority] - PRIORITY_RANK[a.priority] || b.score - a.score
-        );
-      }
-
-      return deduped;
+    if (sortBy === "score") {
+      deduped.sort((a, b) => b.score - a.score);
+    } else if (sortBy === "title") {
+      deduped.sort((a, b) => a.title.localeCompare(b.title));
+    } else {
+      deduped.sort((a, b) =>
+        PRIORITY_RANK[b.priority] - PRIORITY_RANK[a.priority] || b.score - a.score
+      );
     }
 
-    // -----------------------------
-    // Rendering
-    // -----------------------------
-    function badgeClass(priority) {
-      if (priority === "High") return "priority-high";
-      if (priority === "Medium") return "priority-medium";
-      if (priority === "Low") return "priority-low";
-      if (priority === "Positive / Monitor") return "priority-positive";
-      return "badge-neutral";
+    return deduped;
+  }
+
+  function badgeClass(priority) {
+    if (priority === "High") return "priority-high";
+    if (priority === "Medium") return "priority-medium";
+    if (priority === "Low") return "priority-low";
+    if (priority === "Positive / Monitor") return "priority-positive";
+    return "badge-neutral";
+  }
+
+  function renderResults(results) {
+    const resultsEl = document.getElementById("results");
+    document.getElementById("shownCount").textContent = results.length;
+    document.getElementById("parsedCount").textContent = parsedChunkCount;
+
+    if (!results.length) {
+      resultsEl.innerHTML = `<div class="empty">No relevant credit items found.</div>`;
+      return;
     }
 
-    function renderResults(results) {
-      const resultsEl = document.getElementById("results");
-      document.getElementById("shownCount").textContent = results.length;
-      document.getElementById("parsedCount").textContent = parsedChunkCount;
-
-      if (!results.length) {
-        resultsEl.innerHTML = `<div class="empty">No relevant credit items found.</div>`;
-        return;
-      }
-
-      resultsEl.innerHTML = results.map(r => {
-        const chips = Object.entries(r.matches)
-          .flatMap(([cat, hits]) =>
-            hits.slice(0, 10).map(hit =>
-              `<span class="chip" title="${escapeHtml(cat)}">${escapeHtml(hit)}</span>`
-            )
+    resultsEl.innerHTML = results.map(r => {
+      const chips = Object.entries(r.matches)
+        .flatMap(([cat, hits]) =>
+          hits.slice(0, 10).map(hit =>
+            `<span class="chip" title="${escapeHtml(cat)}">${escapeHtml(hit)}</span>`
           )
-          .join("");
+        )
+        .join("");
 
-        const rawBlock = expandedRawId === r.id
-          ? `<pre class="raw">${escapeHtml(r.raw)}</pre>`
-          : "";
+      const rawBlock = expandedRawId === r.id
+        ? `<pre class="raw">${escapeHtml(r.raw)}</pre>`
+        : "";
 
-        const urlLink = r.url
-          ? `${escapeHtml(r.url)}Open source</a>`
-          : "";
-
-        return `
-          <div class="result-card">
-            <div class="badges">
-              <span class="badge ${badgeClass(r.priority)}">${escapeHtml(r.priority)}</span>
-              <span class="badge badge-neutral">Score ${r.score}</span>
-              <span class="badge badge-neutral">${escapeHtml(r.sourceLabel)}</span>
-              ${r.domain ? `<span class="badge badge-neutral">${escapeHtml(r.domain)}</span>` : ""}
-            </div>
-
-            <div class="title">${escapeHtml(r.title)}</div>
-            <div class="reason">${escapeHtml(r.reason)}</div>
-            <div class="excerpt">${escapeHtml(r.excerpt)}</div>
-
-            <div class="meta">
-              <div><strong>Entities:</strong> ${r.entities.length ? escapeHtml(r.entities.join(", ")) : "None"}</div>
-              <div><strong>Categories:</strong> ${r.categories.length ? escapeHtml(r.categories.join(", ")) : "None"}</div>
-            </div>
-
-            <div class="chips">${chips}</div>
-
-            <div class="links">
-              ${urlLink}
-              <button onclick="toggleRaw(${r.id})">${expandedRawId === r.id ? "Hide raw text" : "Show raw text"}</button>
-            </div>
-
-            ${rawBlock}
+      const urlLink = r.url
+        ? `<a href="${escapeHtml(r.url)}" target="_blank" rel="noreferrerrn `
+        <div class="result-card">
+          <div class="badges">
+            <span class="badge ${badgeClass(r.priority)}">${escapeHtml(r.priority)}</span>
+            <span class="badge badge-neutral">Score ${r.score}</span>
+            <span class="badge badge-neutral">${escapeHtml(r.sourceLabel)}</span>
+            ${r.domain ? `<span class="badge badge-neutral">${escapeHtml(r.domain)}</span>` : ""}
           </div>
-        `;
-      }).join("");
+
+          <div class="title">${escapeHtml(r.title)}</div>
+          <div class="reason">${escapeHtml(r.reason)}</div>
+          <div class="excerpt">${escapeHtml(r.excerpt)}</div>
+
+          <div class="meta">
+            <div><strong>Entities:</strong> ${r.entities.length ? escapeHtml(r.entities.join(", ")) : "None"}</div>
+            <div><strong>Categories:</strong> ${r.categories.length ? escapeHtml(r.categories.join(", ")) : "None"}</div>
+          </div>
+
+          <div class="chips">${chips}</div>
+
+          <div class="links">
+            ${urlLink}
+            <button onclick="toggleRaw(${r.id})">${expandedRawId === r.id ? "Hide raw text" : "Show raw text"}</button>
+          </div>
+
+          ${rawBlock}
+        </div>
+      `;
+    }).join("");
+  }
+
+  function updateSummary(results) {
+    const counts = {
+      "High": 0,
+      "Medium": 0,
+      "Low": 0,
+      "Positive / Monitor": 0
+    };
+
+    results.forEach(r => {
+      if (counts[r.priority] !== undefined) counts[r.priority]++;
+    });
+
+    if (document.getElementById("countHigh")) document.getElementById("countHigh").textContent = counts["High"];
+    if (document.getElementById("countMedium")) document.getElementById("countMedium").textContent = counts["Medium"];
+    if (document.getElementById("countLow")) document.getElementById("countLow").textContent = counts["Low"];
+    if (document.getElementById("countPositive")) document.getElementById("countPositive").textContent = counts["Positive / Monitor"];
+  }
+
+  function runAnalysis() {
+    try {
+      setStatus("", "");
+      const alertText = document.getElementById("alertText").value;
+      const watchlistText = document.getElementById("watchlistText").value;
+      const minPriority = document.getElementById("minPriority").value;
+      const categoryFilter = document.getElementById("categoryFilter").value;
+      const query = document.getElementById("searchBox").value;
+      const sortBy = document.getElementById("sortBy").value;
+
+      lastResults = analyze(alertText, watchlistText, minPriority, categoryFilter, query, sortBy);
+      updateSummary(lastResults);
+      renderResults(lastResults);
+    } catch (err) {
+      console.error(err);
+      setStatus("Analysis failed: " + err.message, "error");
     }
+  }
 
-    function updateSummary(results) {
-      const counts = {
-        "High": 0,
-        "Medium": 0,
-        "Low": 0,
-        "Positive / Monitor": 0
-      };
+  function toggleRaw(id) {
+    expandedRawId = expandedRawId === id ? null : id;
+    renderResults(lastResults);
+  }
 
-      results.forEach(r => {
-        if (counts[r.priority] !== undefined) counts[r.priority]++;
+  function toggleKeywordLibrary() {
+    const wrap = document.getElementById("keywordLibraryWrap");
+    wrap.style.display = wrap.style.display === "none" ? "block" : "none";
+  }
+
+  function applyCustomKeywords() {
+    try {
+      const raw = document.getElementById("keywordLibrary").value;
+      const parsed = JSON.parse(raw);
+
+      Object.keys(parsed).forEach(cat => {
+        if (!parsed[cat].terms || !Array.isArray(parsed[cat].terms)) {
+          throw new Error(`Category "${cat}" must have a terms array`);
+        }
       });
 
-      document.getElementById("countHigh").textContent = counts["High"];
-      document.getElementById("countMedium").textContent = counts["Medium"];
-      document.getElementById("countLow").textContent = counts["Low"];
-      document.getElementById("countPositive").textContent = counts["Positive / Monitor"];
+      Object.keys(KEYWORD_LIBRARY).forEach(k => delete KEYWORD_LIBRARY[k]);
+      Object.assign(KEYWORD_LIBRARY, parsed);
+
+      populateCategoryFilter();
+      fillKeywordLibrary();
+      setStatus("Keyword library updated.", "ok");
+    } catch (err) {
+      console.error(err);
+      setStatus("Invalid keyword library JSON.", "error");
     }
+  }
 
-    function runAnalysis() {
-      try {
-        setStatus("");
-        const alertText = document.getElementById("alertText").value;
-        const watchlistText = document.getElementById("watchlistText").value;
-        const minPriority = document.getElementById("minPriority").value;
-        const categoryFilter = document.getElementById("categoryFilter").value;
-        const query = document.getElementById("searchBox").value;
-        const sortBy = document.getElementById("sortBy").value;
+  function downloadFile(filename, content, type) {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
 
-        lastResults = analyze(alertText, watchlistText, minPriority, categoryFilter, query, sortBy);
-        updateSummary(lastResults);
-        renderResults(lastResults);
-      } catch (err) {
-        console.error(err);
-        setStatus("Analysis failed: " + err.message, "error");
-      }
-    }
+  function toCsv(rows) {
+    const headers = [
+      "priority","score","reason","title","entities","categories",
+      "matched_keywords","source_quality","url","source_domain","excerpt"
+    ];
 
-    function toggleRaw(id) {
-      expandedRawId = expandedRawId === id ? null : id;
-      renderResults(lastResults);
-    }
+    const esc = value => `"${String(value ?? "").replace(/"/g, '""')}"`;
 
-    // -----------------------------
-    // Editable keyword library
-    // -----------------------------
-    function toggleKeywordLibrary() {
-      const wrap = document.getElementById("keywordLibraryWrap");
-      wrap.style.display = wrap.style.display === "none" ? "block" : "none";
-    }
+    return [
+      headers.join(","),
+      ...rows.map(r =>
+        [
+          r.priority,
+          r.score,
+          r.reason,
+          r.title,
+          r.entities.join("; "),
+          r.categories.join("; "),
+          JSON.stringify(r.matches),
+          r.sourceLabel,
+          r.url,
+          r.domain,
+          r.excerpt
+        ].map(esc).join(",")
+      )
+    ].join("\n");
+  }
 
-    function applyCustomKeywords() {
-      try {
-        const raw = document.getElementById("keywordLibrary").value;
-        const parsed = JSON.parse(raw);
+  function toMarkdown(rows) {
+    const counts = rows.reduce((acc, r) => {
+      acc[r.priority] = (acc[r.priority] || 0) + 1;
+      return acc;
+    }, {});
 
-        Object.keys(parsed).forEach(cat => {
-          if (!parsed[cat].terms || !Array.isArray(parsed[cat].terms)) {
-            throw new Error(`Category "${cat}" must have a terms array`);
-          }
-        });
-
-        Object.keys(KEYWORD_LIBRARY).forEach(k => delete KEYWORD_LIBRARY[k]);
-        Object.assign(KEYWORD_LIBRARY, parsed);
-
-        populateCategoryFilter();
-        fillKeywordLibrary();
-        setStatus("Keyword library updated.", "ok");
-      } catch (err) {
-        console.error(err);
-        setStatus("Invalid keyword library JSON.", "error");
-      }
-    }
-
-    // -----------------------------
-    // Exports
-    // -----------------------------
-    function downloadFile(filename, content, type) {
-      const blob = new Blob([content], { type });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }
-
-    function toCsv(rows) {
-      const headers = [
-        "priority","score","reason","title","entities","categories",
-        "matched_keywords","source_quality","url","source_domain","excerpt"
-      ];
-
-      const esc = value => `"${String(value ?? "").replace(/"/g, '""')}"`;
-
-      return [
-        headers.join(","),
-        ...rows.map(r =>
-          [
-            r.priority,
-            r.score,
-            r.reason,
-            r.title,
-            r.entities.join("; "),
-            r.categories.join("; "),
-            JSON.stringify(r.matches),
-            r.sourceLabel,
-            r.url,
-            r.domain,
-            r.excerpt
-          ].map(esc).join(",")
-        )
-      ].join("\n");
-    }
-
-    function toMarkdown(rows) {
-      const counts = rows.reduce((acc, r) => {
-        acc[r.priority] = (acc[r.priority] || 0) + 1;
-        return acc;
-      }, {});
-
-      return `# Tyler Secor Intern Project
+    return `# Tyler Secor Intern Project
 
 Generated: ${new Date().toLocaleString()}
 
@@ -1373,193 +801,151 @@ ${Object.entries(r.matches).map(([cat, hits]) => `- ${cat}: ${hits.join(", ")}`)
 Excerpt:
 ${r.excerpt}
 `).join("\n")}`;
-    }
+  }
 
-    function downloadCsv() {
-      if (!lastResults.length) return alert("Run an analysis first.");
-      downloadFile("credit_alert_results.csv", toCsv(lastResults), "text/csv;charset=utf-8;");
-    }
+  function downloadCsv() {
+    if (!lastResults.length) return alert("Run an analysis first.");
+    downloadFile("credit_alert_results.csv", toCsv(lastResults), "text/csv;charset=utf-8;");
+  }
 
-    function downloadJson() {
-      if (!lastResults.length) return alert("Run an analysis first.");
-      downloadFile("credit_alert_results.json", JSON.stringify(lastResults, null, 2), "application/json");
-    }
+  function downloadJson() {
+    if (!lastResults.length) return alert("Run an analysis first.");
+    downloadFile("credit_alert_results.json", JSON.stringify(lastResults, null, 2), "application/json");
+  }
 
-    function downloadMarkdown() {
-      if (!lastResults.length) return alert("Run an analysis first.");
-      downloadFile("credit_alert_report.md", toMarkdown(lastResults), "text/markdown;charset=utf-8;");
-    }
+  function downloadMarkdown() {
+    if (!lastResults.length) return alert("Run an analysis first.");
+    downloadFile("credit_alert_report.md", toMarkdown(lastResults), "text/markdown;charset=utf-8;");
+  }
 
-    // -----------------------------
-    // Utility UI
-    // -----------------------------
-    function clearAllInputs() {
-      document.getElementById("alertText").value = "";
-      document.getElementById("watchlistText").value = "";
-      document.getElementById("searchBox").value = "";
-      document.getElementById("minPriority").value = "Low";
-      document.getElementById("categoryFilter").value = "All categories";
-      document.getElementById("sortBy").value = "priority";
-      document.getElementById("fileInput").value = "";
-      expandedRawId = null;
-      lastResults = [];
-      parsedChunkCount = 0;
-      setStatus("");
-      updateSummary([]);
-      renderResults([]);
-      document.getElementById("shownCount").textContent = "0";
-      document.getElementById("parsedCount").textContent = "0";
-    }
-
-    function loadSample() {
-      document.getElementById("watchlistText").value = [
-        "Group 1 Automotive",
-        "City of Decatur",
-        "Morgan County",
-        "Decatur Utilities",
-        "Sample Health System",
-        "Town of Ashford"
-      ].join("\n");
-
-      document.getElementById("alertText").value = `
-Lithia UK acquires three Group 1 Automotive sites - Motor Trader
-Motor Trader
-Lithia UK has acquired three retail sites from Group 1 Automotive. The deal will see sites in Derby, Chester and Preston transition into the new network.
-https://www.motortrader.com/example1
-
-Lithia UK adds JLR dealerships acquired from Group 1 Automotive - AM-online
-AM-online
-Lithia UK has acquired three Jaguar Land Rover dealerships from Group 1 Automotive in Derby, Chester and Preston.
-https://www.am-online.com/example2
-
-Here Are All 97 Car Dealers the FTC Threatened Over Deceptive Pricing - The Drive
-The Drive
-Group 1 Automotive appears in a list of dealers the FTC threatened over deceptive pricing practices.
-https://www.thedrive.com/example3
-
-O'Reilly Automotive Compare against Competitors - Investing.com
-Investing.com
-Summary table and competitor comparison data including Group 1 Automotive.
-https://www.investing.com/example4
-      `.trim();
-
-      runAnalysis();
-    }
-
-    function populateCategoryFilter() {
-      const select = document.getElementById("categoryFilter");
-      const categories = ["All categories", ...Object.keys(KEYWORD_LIBRARY)];
-      select.innerHTML = categories.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
-      select.value = "All categories";
-    }
-
-    function fillKeywordLibrary() {
-      document.getElementById("keywordLibrary").value = JSON.stringify(KEYWORD_LIBRARY, null, 2);
-      const count = Object.values(KEYWORD_LIBRARY).reduce((sum, cat) => sum + cat.terms.length, 0);
-      document.getElementById("keywordCount").textContent = count;
-    }
-
-    // -----------------------------
-    // File parsing
-    // -----------------------------
-    async function extractTextFromPdf(arrayBuffer) {
-      if (!window.pdfjsLib) throw new Error("PDF parser not loaded.");
-      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      let fullText = "";
-
-      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-        const page = await pdf.getPage(pageNum);
-        const content = await page.getTextContent();
-        const pageText = content.items.map(item => item.str).join(" ");
-        fullText += pageText + "\n\n";
-      }
-
-      return fullText.trim();
-    }
-
-    async function extractTextFromDocx(arrayBuffer) {
-      if (!window.mammoth) throw new Error("DOCX parser not loaded.");
-      const result = await mammoth.extractRawText({ arrayBuffer });
-      return String(result.value || "").trim();
-    }
-
-    async function parseUploadedFile(file) {
-      const name = file.name.toLowerCase();
-
-      if (file.size > 15 * 1024 * 1024) {
-        throw new Error(`${file.name} is larger than 15MB.`);
-      }
-
-      if (name.endsWith(".txt") || name.endsWith(".md") || name.endsWith(".log") || name.endsWith(".csv")) {
-        return await file.text();
-      }
-
-      if (name.endsWith(".eml")) {
-        const text = await file.text();
-        return cleanEmailText(text);
-      }
-
-      if (name.endsWith(".pdf")) {
-        const buffer = await file.arrayBuffer();
-        return await extractTextFromPdf(buffer);
-      }
-
-      if (name.endsWith(".docx")) {
-        const buffer = await file.arrayBuffer();
-        return await extractTextFromDocx(buffer);
-      }
-
-      throw new Error(`Unsupported file type: ${file.name}`);
-    }
-
-    async function handleFileUpload(event) {
-      const files = Array.from(event.target.files || []);
-      if (!files.length) return;
-
-      setStatus("Reading files...", "ok");
-
-      const chunks = [];
-      const errors = [];
-
-      for (const file of files) {
-        try {
-          const text = await parseUploadedFile(file);
-          if (text && text.trim()) {
-            chunks.push(text.trim());
-          } else {
-            errors.push(`${file.name}: no readable text found.`);
-          }
-        } catch (err) {
-          console.error(err);
-          errors.push(`${file.name}: ${err.message}`);
-        }
-      }
-
-      const current = document.getElementById("alertText").value;
-      const combined = [current, ...chunks].filter(Boolean).join("\n\n");
-      document.getElementById("alertText").value = combined;
-
-      if (errors.length && chunks.length) {
-        setStatus(`Loaded ${chunks.length} file(s). Some files had issues: ${errors.join(" | ")}`, "error");
-      } else if (errors.length) {
-        setStatus(errors.join(" | "), "error");
-      } else {
-        setStatus(`Loaded ${chunks.length} file(s).`, "ok");
-      }
-    }
-
-    // -----------------------------
-    // Event listeners
-    // -----------------------------
-    document.getElementById("fileInput").addEventListener("change", handleFileUpload);
-    document.getElementById("searchBox").addEventListener("input", runAnalysis);
-    document.getElementById("sortBy").addEventListener("change", runAnalysis);
-    document.getElementById("minPriority").addEventListener("change", runAnalysis);
-    document.getElementById("categoryFilter").addEventListener("change", runAnalysis);
-
-    populateCategoryFilter();
-    fillKeywordLibrary();
+  function clearAllInputs() {
+    document.getElementById("alertText").value = "";
+    document.getElementById("watchlistText").value = "";
+    document.getElementById("searchBox").value = "";
+    document.getElementById("minPriority").value = "Low";
+    document.getElementById("categoryFilter").value = "All categories";
+    document.getElementById("sortBy").value = "priority";
+    document.getElementById("fileInput").value = "";
+    expandedRawId = null;
+    lastResults = [];
+    parsedChunkCount = 0;
+    setStatus("");
     updateSummary([]);
-  </script>
-</body>
-</html>
+    renderResults([]);
+    document.getElementById("shownCount").textContent = "0";
+    document.getElementById("parsedCount").textContent = "0";
+  }
+
+  function populateCategoryFilter() {
+    const select = document.getElementById("categoryFilter");
+    if (!select) return;
+    const categories = ["All categories", ...Object.keys(KEYWORD_LIBRARY)];
+    select.innerHTML = categories.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
+    select.value = "All categories";
+  }
+
+  function fillKeywordLibrary() {
+    const box = document.getElementById("keywordLibrary");
+    if (box) box.value = JSON.stringify(KEYWORD_LIBRARY, null, 2);
+
+    const count = Object.values(KEYWORD_LIBRARY).reduce((sum, cat) => sum + cat.terms.length, 0);
+    if (document.getElementById("keywordCount")) document.getElementById("keywordCount").textContent = count;
+  }
+
+  async function extractTextFromPdf(arrayBuffer) {
+    if (!window.pdfjsLib) throw new Error("PDF parser not loaded.");
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    let fullText = "";
+
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      const page = await pdf.getPage(pageNum);
+      const content = await page.getTextContent();
+      const pageText = content.items.map(item => item.str).join(" ");
+      fullText += pageText + "\n\n";
+    }
+
+    return fullText.trim();
+  }
+
+  async function extractTextFromDocx(arrayBuffer) {
+    if (!window.mammoth) throw new Error("DOCX parser not loaded.");
+    const result = await mammoth.extractRawText({ arrayBuffer });
+    return String(result.value || "").trim();
+  }
+
+  async function parseUploadedFile(file) {
+    const name = file.name.toLowerCase();
+
+    if (file.size > 15 * 1024 * 1024) {
+      throw new Error(`${file.name} is larger than 15MB.`);
+    }
+
+    if (name.endsWith(".txt") || name.endsWith(".md") || name.endsWith(".log") || name.endsWith(".csv")) {
+      return await file.text();
+    }
+
+    if (name.endsWith(".eml")) {
+      const text = await file.text();
+      return cleanEmailText(text);
+    }
+
+    if (name.endsWith(".pdf")) {
+      const buffer = await file.arrayBuffer();
+      return await extractTextFromPdf(buffer);
+    }
+
+    if (name.endsWith(".docx")) {
+      const buffer = await file.arrayBuffer();
+      return await extractTextFromDocx(buffer);
+    }
+
+    throw new Error(`Unsupported file type: ${file.name}`);
+  }
+
+  async function handleFileUpload(event) {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+
+    setStatus("Reading files...", "ok");
+
+    const chunks = [];
+    const errors = [];
+
+    for (const file of files) {
+      try {
+        const text = await parseUploadedFile(file);
+        if (text && text.trim()) {
+          chunks.push(text.trim());
+        } else {
+          errors.push(`${file.name}: no readable text found.`);
+        }
+      } catch (err) {
+        console.error(err);
+        errors.push(`${file.name}: ${err.message}`);
+      }
+    }
+
+    const current = document.getElementById("alertText").value;
+    const combined = [current, ...chunks].filter(Boolean).join("\n\n");
+    document.getElementById("alertText").value = combined;
+
+    if (errors.length && chunks.length) {
+      setStatus(`Loaded ${chunks.length} file(s). Some files had issues: ${errors.join(" | ")}`, "error");
+    } else if (errors.length) {
+      setStatus(errors.join(" | "), "error");
+    } else {
+      setStatus(`Loaded ${chunks.length} file(s).`, "ok");
+    }
+  }
+
+  // Hook up UI
+  document.getElementById("fileInput").addEventListener("change", handleFileUpload);
+  document.getElementById("searchBox").addEventListener("input", runAnalysis);
+  document.getElementById("sortBy").addEventListener("change", runAnalysis);
+  document.getElementById("minPriority").addEventListener("change", runAnalysis);
+  document.getElementById("categoryFilter").addEventListener("change", runAnalysis);
+
+  populateCategoryFilter();
+  fillKeywordLibrary();
+  updateSummary([]);
+</script>
