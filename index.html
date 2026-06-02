@@ -55,6 +55,7 @@
       border-radius: 24px;
       padding: 24px 28px;
       margin-bottom: 18px;
+      border: 1px solid rgba(255,255,255,0.08);
       box-shadow: 0 12px 30px rgba(24, 57, 44, 0.18);
     }
 
@@ -177,7 +178,7 @@
 
     .field textarea {
       resize: vertical;
-      min-height: 130px;
+      min-height: 120px;
     }
 
     .upload-box {
@@ -349,15 +350,33 @@
       font-size: 12px;
     }
 
+    .links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      font-size: 14px;
+    }
+
     .links a, .links button {
       color: #1a5fb4;
       background: none;
       border: none;
       padding: 0;
       cursor: pointer;
-      text-decoration: underline;
       font: inherit;
-      font-size: 14px;
+      text-decoration: underline;
+    }
+
+    pre.raw {
+      background: #102119;
+      color: #e5eee8;
+      padding: 12px;
+      border-radius: 12px;
+      overflow: auto;
+      max-height: 280px;
+      white-space: pre-wrap;
+      margin-top: 12px;
+      font-size: 12px;
     }
 
     .empty {
@@ -416,13 +435,13 @@
     <div id="statusBox" class="status"></div>
 
     <div class="top-actions">
-      <button class="btn" id="btnAnalyzeTop" type="button">Analyze</button>
-      <button class="btn" id="btnExportCsv" type="button">Export CSV</button>
-      <button class="btn" id="btnExportJson" type="button">Export JSON</button>
-      <button class="btn" id="btnExportMarkdown" type="button">Export Report</button>
-      <button class="btn secondary" id="btnKeywordToggle" type="button">Keyword Library</button>
-      <button class="btn gold" id="btnLoadSample" type="button">Load Sample</button>
-      <button class="btn secondary" id="btnClear" type="button">Clear</button>
+      <button class="btn" id="btnAnalyzeTop">Analyze</button>
+      <button class="btn" id="btnExportCsv">Export CSV</button>
+      <button class="btn" id="btnExportJson">Export JSON</button>
+      <button class="btn" id="btnExportMarkdown">Export Report</button>
+      <button class="btn secondary" id="btnKeywordToggle">Keyword Library</button>
+      <button class="btn gold" id="btnLoadSample">Load Sample</button>
+      <button class="btn secondary" id="btnClear">Clear</button>
     </div>
 
     <div class="summary-grid">
@@ -455,9 +474,9 @@
         <div class="field">
           <label>Upload files</label>
           <div class="upload-box">
-            <input type="file" id="fileInput" multiple accept=".txt,.eml,.md,.log,.csv,.pdf,.docx,.msg" />
+            <input type="file" id="fileInput" multiple accept=".txt,.eml,.md,.log,.csv,.pdf,.docx" />
           </div>
-          <div class="small">.txt, .eml, .md, .log, .csv, .pdf, .docx, .msg</div>
+          <div class="small">.txt, .eml, .md, .log, .csv, .pdf, .docx</div>
         </div>
 
         <div class="field">
@@ -487,13 +506,13 @@
         </div>
 
         <div class="field">
-          <button class="btn" id="btnAnalyzeSide" type="button" style="width:100%;">Analyze</button>
+          <button class="btn" id="btnAnalyzeSide" style="width:100%;">Analyze</button>
         </div>
 
         <div class="field" id="keywordLibraryWrap" style="display:none;">
           <label>Keyword library (editable JSON)</label>
-          <textarea id="keywordLibrary" style="min-height:320px;"></textarea>
-          <button class="btn secondary" id="btnApplyKeywords" type="button" style="margin-top:8px;">Apply Keyword Changes</button>
+          <textarea id="keywordLibrary" style="min-height:260px;"></textarea>
+          <button class="btn secondary" id="btnApplyKeywords" style="margin-top:8px;">Apply Keyword Changes</button>
         </div>
       </div>
 
@@ -502,7 +521,7 @@
           <div class="toolbar-left">
             <h2>Results</h2>
             <div class="small">
-              <span id="shownCount">0</span> shown • <span id="parsedCount">0</span> article blocks parsed
+              <span id="shownCount">0</span> shown • <span id="parsedCount">0</span> chunks parsed
             </div>
           </div>
           <div class="toolbar-right">
@@ -512,7 +531,7 @@
               <option value="score">Score</option>
               <option value="title">Title</option>
             </select>
-            <button class="btn secondary" id="btnRefresh" type="button">Refresh</button>
+            <button class="btn secondary" id="btnRefresh">Refresh</button>
           </div>
         </div>
 
@@ -526,14 +545,19 @@
   </div>
 
   <script>
-    window.addEventListener("load", () => {
+    // -----------------------------
+    // Safe initialization
+    // -----------------------------
+    window.addEventListener("load", function () {
       try {
         initApp();
       } catch (err) {
         console.error(err);
         const box = document.getElementById("statusBox");
-        box.className = "status error";
-        box.textContent = "Startup error: " + err.message;
+        if (box) {
+          box.className = "status error";
+          box.textContent = "Startup error: " + err.message;
+        }
       }
     });
 
@@ -543,6 +567,9 @@
           "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
       }
 
+      // -----------------------------
+      // Data
+      // -----------------------------
       const PRIORITY_RANK = {
         "High": 4,
         "Medium": 3,
@@ -565,9 +592,14 @@
         /facebook/i,
         /twitter/i,
         /external email/i,
-        /caution:/i,
+        /CAUTION:/i,
         /do not click links/i,
         /contact the .* help desk/i
+      ];
+
+      const SOURCE_NOISE_PATTERNS = [
+        /investing\.com/i,
+        /benzinga/i
       ];
 
       const LOW_VALUE_PATTERNS = [
@@ -581,11 +613,103 @@
         /quote/i
       ];
 
-      const KEYWORD_LIBRARY = buildExpandedKeywordLibrary();
+      const SOURCE_WEIGHTS = [
+        { pattern: /sec\.gov|ftc\.gov|doj\.gov|emma\.msrb\.org|moodys|fitchratings|spglobal|krollbondratings|kbra/i, boost: 4, label: "Primary / regulatory / rating source" },
+        { pattern: /reuters|bloomberg|wsj|ft\.com|apnews|prnewswire|businesswire|globenewswire/i, boost: 2, label: "Financial/newswire source" }
+      ];
+
+      const KEYWORD_LIBRARY = {
+        "Bankruptcy & Insolvency": {
+          severity: 10,
+          terms: [
+            "bankruptcy","filed for bankruptcy","chapter 7","chapter 11","chapter 13","insolvency","insolvent",
+            "liquidation","receivership","restructuring","debt restructuring","financial distress",
+            "debtor-in-possession","dip financing","out-of-court restructuring","moratorium on payments"
+          ]
+        },
+        "Credit Deterioration & Default": {
+          severity: 9,
+          terms: [
+            "default","payment default","missed payment","past due","delinquent","loan default",
+            "covenant breach","technical default","rating downgrade","credit downgrade","negative outlook",
+            "credit watch","creditwatch","distressed exchange","collections action","write-off","charge-off",
+            "increased leverage","liquidity pressures","financial weakness","refinancing risk","bond default",
+            "going concern warning","liquidity shortfall","cash flow problems"
+          ]
+        },
+        "Corporate Actions": {
+          severity: 5,
+          terms: [
+            "merger","acquisition","m&a","takeover","buyout","asset sale","divestiture","sale of business",
+            "spin-off","spinoff","carve-out","ownership change","change in control","strategic alternatives",
+            "exploring sale","stake sale","majority acquisition","minority investment"
+          ]
+        },
+        "Legal & Regulatory Issues": {
+          severity: 7,
+          terms: [
+            "lawsuit","litigation","legal action","class action","court ruling","judgment","settlement",
+            "regulatory investigation","sec investigation","ftc","doj investigation","enforcement action",
+            "penalty","fine imposed","compliance violation","fraud allegations","accounting fraud",
+            "financial restatement","material weakness","subpoena","criminal charges","civil charges",
+            "license revoked","permit revoked","cease and desist order","antitrust investigation","indictment"
+          ]
+        },
+        "Financial Performance Warning Signs": {
+          severity: 7,
+          terms: [
+            "earnings miss","revenue decline","profit decline","net loss","operating loss","negative ebitda",
+            "margin compression","declining sales","weak outlook","reduced guidance","lowered forecast",
+            "declining cash flow","cash burn","liquidity concerns","weak demand","lower volumes",
+            "negative free cash flow","poor financial results","declining profitability","financial strain"
+          ]
+        },
+        "Financing & Debt Activity": {
+          severity: 6,
+          terms: [
+            "bond issuance","loan refinancing","refinancing delay","credit facility","revolver drawdown",
+            "debt repayment","debt buyback","debt restructuring","increased borrowing","leverage ratio",
+            "covenant amendment","waiver granted","loan amendment","bridge loan","emergency funding",
+            "capital raise","equity issuance","private placement","convertible debt","capital injection",
+            "funding shortfall","lender negotiations","funding crisis","debt maturity extension",
+            "credit agreement","revolving credit facility","term loan b","new loan facility"
+          ]
+        },
+        "Operational Risk Indicators": {
+          severity: 6,
+          terms: [
+            "plant closure","factory shutdown","layoffs","workforce reduction","job cuts","furloughs","strike",
+            "labor dispute","supply chain disruption","production halt","operational disruption",
+            "system outage","cyberattack","data breach","business interruption","facility damage",
+            "major recall","product defect","quality issue","store closures","facility closures",
+            "shutdown announcement","business shutdown","closing operations","mass layoffs","headcount reduction"
+          ]
+        },
+        "Ownership & Insider Activity": {
+          severity: 5,
+          terms: [
+            "insider buying","insider selling","insider sale","executive stock sale","director sold shares",
+            "officer sold shares","form 4 filing","beneficial ownership filing","change in ownership",
+            "change of control","shareholder dilution","ownership transferred","proxy contest"
+          ]
+        },
+        "Positive Credit Signals": {
+          severity: -3,
+          terms: [
+            "rating upgraded","credit upgrade","positive outlook","debt reduction","deleveraging","record revenue",
+            "strong liquidity","improved margins","budget surplus","grant awarded","contract awarded","new funding",
+            "capital investment","refinanced debt","improved financial position","debt paid down","strong cash flow"
+          ]
+        }
+      };
 
       let lastResults = [];
       let parsedChunkCount = 0;
+      let expandedRawId = null;
 
+      // -----------------------------
+      // Elements
+      // -----------------------------
       const el = {
         statusBox: document.getElementById("statusBox"),
         alertText: document.getElementById("alertText"),
@@ -617,7 +741,10 @@
         btnLoadSample: document.getElementById("btnLoadSample")
       };
 
-      function setStatus(message, type = "ok") {
+      // -----------------------------
+      // Helpers
+      // -----------------------------
+      function setStatus(message, type) {
         if (!message) {
           el.statusBox.className = "status";
           el.statusBox.textContent = "";
@@ -627,8 +754,17 @@
         el.statusBox.textContent = message;
       }
 
+      function escapeHtml(str) {
+        return String(str)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
       function normalize(text) {
         return String(text || "")
+          .replace(/&amp;/g, "&")
           .replace(/\r/g, "\n")
           .replace(/[ \t]+/g, " ")
           .replace(/\n{3,}/g, "\n\n")
@@ -657,7 +793,7 @@
 
       function cleanEmailText(text) {
         let t = String(text || "");
-        t = t.replace(/=\r?\n/g, "");   // quoted-printable soft line breaks
+        t = t.replace(/=\r?\n/g, "");
         t = t.replace(/=3D/g, "=");
         t = stripHtml(t);
         t = t
@@ -666,6 +802,15 @@
           .filter(line => line && !GOOGLE_NOISE_PATTERNS.some(p => p.test(line)))
           .join("\n");
         return normalize(t);
+      }
+
+      function escapeRegExp(s) {
+        return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      }
+
+      function termRegex(term) {
+        const escaped = escapeRegExp(String(term).trim());
+        return new RegExp("(^|[^a-zA-Z0-9])" + escaped + "([^a-zA-Z0-9]|$)", "i");
       }
 
       function extractUrls(text) {
@@ -680,14 +825,16 @@
         }
       }
 
-      function excerpt(text, n = 420) {
+      function excerpt(text, n) {
         const clean = String(text || "").replace(/\s+/g, " ").trim();
-        return clean.length <= n ? clean : clean.slice(0, n).replace(/\s+\S*$/, "") + "...";
+        if (clean.length <= n) return clean;
+        return clean.slice(0, n).replace(/\s+\S*$/, "") + "...";
       }
 
       function detectEntities(text, watchlistText) {
         const lower = text.toLowerCase();
         const entities = [];
+
         String(watchlistText || "")
           .split(/\n|,|;/)
           .map(x => x.trim())
@@ -695,128 +842,311 @@
           .forEach(entity => {
             if (lower.includes(entity.toLowerCase())) entities.push(entity);
           });
-        return Array.from(new Set(entities));
+
+        const patterns = [
+          /\bCity of [A-Z][A-Za-z .'-]+/g,
+          /\bTown of [A-Z][A-Za-z .'-]+/g,
+          /\b[A-Z][A-Za-z .'-]+ County\b/g,
+          /\b[A-Z][A-Za-z .'-]+ School District\b/g,
+          /\b[A-Z][A-Za-z .'-]+ Water Authority\b/g,
+          /\b[A-Z][A-Za-z .'-]+ Utility District\b/g,
+          /\b[A-Z][A-Za-z .'-]+ Hospital\b/g,
+          /\bGroup 1 Automotive\b/gi,
+          /\bLithia UK\b/gi
+        ];
+
+        patterns.forEach(p => {
+          const matches = text.match(p) || [];
+          matches.forEach(x => entities.push(x.trim().replace(/[.,;:]$/, "")));
+        });
+
+        return Array.from(new Set(entities.map(x => x.trim())));
       }
 
-      function extractArticleBlocks(rawText) {
+      function extractGoogleAlertArticles(rawText) {
         const text = cleanEmailText(rawText);
-        const blocks = text.split(/\n\s*\n/).map(x => x.trim()).filter(Boolean);
-        const out = [];
+        const articles = [];
 
-        for (const block of blocks) {
-          const lower = block.toLowerCase();
-          if (GOOGLE_NOISE_PATTERNS.some(p => p.test(lower))) continue;
-          if (LOW_VALUE_PATTERNS.some(p => p.test(lower))) continue;
+        // Pattern 1: markdown-style [Title](URL)
+        const linkRegex = /\[([^\]]+?)\]\((https?:\/\/[^\s)]+)\)/g;
+        const matches = Array.from(text.matchAll(linkRegex));
 
-          const urls = extractUrls(block);
-          if (!urls.length) continue;
+        if (matches.length) {
+          for (let i = 0; i < matches.length; i++) {
+            const current = matches[i];
+            const next = matches[i + 1];
 
-          const lines = block.split("\n").map(x => x.trim()).filter(Boolean);
-          const title = lines[0] || "Untitled";
-          const source = lines[1] || "";
-          const summary = lines.slice(2).join(" ") || block;
+            const title = current[1].trim();
+            const url = current[2].trim();
 
-          out.push({
-            title,
-            source,
-            excerpt: excerpt(summary, 380),
-            url: urls[0],
-            raw: block
+            const start = current.index + current[0].length;
+            const end = next ? next.index : text.length;
+            const between = text.slice(start, end).trim();
+
+            const lines = between.split("\n").map(x => x.trim()).filter(Boolean);
+            const source = lines[0] || "";
+            const snippet = lines.slice(1).join(" ").trim();
+
+            articles.push({
+              title: title.replace(/\s+-\s+(Facebook|Twitter)\s*$/i, "").trim(),
+              source,
+              snippet,
+              url,
+              raw: [title, source, snippet, url].filter(Boolean).join("\n")
+            });
+          }
+        }
+
+        // Pattern 2: plain text blocks / URL lines
+        if (!articles.length) {
+          const blocks = text.split(/\n\s*\n/).map(x => x.trim()).filter(x => x.length > 50);
+
+          blocks.forEach(block => {
+            const urls = extractUrls(block);
+            if (!urls.length) return;
+
+            const lines = block.split("\n").map(x => x.trim()).filter(Boolean);
+            const title = lines[0] || "";
+            const source = lines[1] || "";
+            const snippet = lines.slice(2).join(" ");
+
+            articles.push({
+              title,
+              source,
+              snippet,
+              url: urls[0],
+              raw: block
+            });
           });
         }
-        return out;
+
+        return articles.filter(a => a.title && a.url);
       }
 
-      function scoreArticle(article, watchlist) {
-        const text = `${article.title} ${article.source} ${article.excerpt}`.toLowerCase();
+      function isLowValueArticle(article) {
+        const combined = [article.title, article.source, article.snippet].join(" ").toLowerCase();
+
+        if (GOOGLE_NOISE_PATTERNS.some(p => p.test(combined))) return true;
+        if (LOW_VALUE_PATTERNS.some(p => p.test(combined))) return true;
+
+        if (SOURCE_NOISE_PATTERNS.some(p => p.test(article.source)) || SOURCE_NOISE_PATTERNS.some(p => p.test(article.url))) {
+          const hasRealCreditSignal =
+            /(lawsuit|investigation|fraud|subpoena|default|bankruptcy|liquidity|downgrade|layoffs|closure|asset sale|divestiture|acquisition|debt|refinancing|credit facility|ftc|doj|sec)/i
+              .test(combined);
+          if (!hasRealCreditSignal) return true;
+        }
+
+        return false;
+      }
+
+      function scoreArticle(article, watchlistText) {
+        const text = [article.title, article.source, article.snippet].join(" ");
         let score = 0;
         const categories = [];
         const matches = {};
 
-        Object.entries(KEYWORD_LIBRARY).forEach(([cat, cfg]) => {
-          const hits = cfg.terms.filter(term => text.includes(term.toLowerCase()));
+        Object.keys(KEYWORD_LIBRARY).forEach(category => {
+          const config = KEYWORD_LIBRARY[category];
+          const hits = [];
+          config.terms.forEach(term => {
+            if (termRegex(term).test(text)) hits.push(term);
+          });
+
           if (hits.length) {
-            categories.push(cat);
-            matches[cat] = hits.slice(0, 15);
-            score += cfg.severity + Math.min(hits.length, 6);
+            categories.push(category);
+            matches[category] = Array.from(new Set(hits));
+            score += Number(config.severity || 5) + Math.min(hits.length, 6);
           }
         });
 
-        const entities = detectEntities(text, watchlist);
-        if (entities.length) score += 2;
+        const domain = article.url ? domainFromUrl(article.url) : "";
+        let sourceLabel = article.source || domain || "Standard source";
 
-        let priority = "Ignore";
-        if (categories.includes("Bankruptcy & Insolvency")) priority = "High";
-        else if (score >= 14) priority = "High";
-        else if (score >= 8) priority = "Medium";
-        else if (score >= 3) priority = "Low";
-        else if (score < 0) priority = "Positive / Monitor";
+        SOURCE_WEIGHTS.forEach(src => {
+          if (src.pattern.test(domain) || src.pattern.test(article.source) || src.pattern.test(text)) {
+            score += src.boost;
+            sourceLabel = src.label;
+          }
+        });
 
-        return { priority, score, categories, matches, entities };
+        const entities = detectEntities(text, watchlistText);
+        if (entities.length > 0) score += 3;
+        if (categories.length >= 2) score += 2;
+
+        return { score, categories, matches, entities, sourceLabel };
       }
 
-      function reasonFor(categories) {
-        if (categories.includes("Bankruptcy & Insolvency")) return "Bankruptcy or insolvency language detected.";
-        if (categories.includes("Credit Deterioration & Default")) return "Default, covenant, downgrade, or liquidity stress detected.";
-        if (categories.includes("Legal & Regulatory Issues")) return "Legal, regulatory, SEC/FTC/DOJ, or investigation risk detected.";
-        if (categories.includes("Corporate Actions")) return "Asset sale, divestiture, acquisition, or strategic transaction detected.";
-        if (categories.includes("Financing & Debt Activity")) return "Debt, refinancing, capital raise, or credit facility activity detected.";
-        if (categories.includes("Operational Risk Indicators")) return "Layoffs, closures, shutdowns, or cyber/operational risk detected.";
-        if (categories.includes("Positive Credit Signals")) return "Possible positive credit signal.";
+      function priority(score, categories) {
+        const severe = [
+          "Bankruptcy & Insolvency",
+          "Credit Deterioration & Default",
+          "Legal & Regulatory Issues"
+        ];
+
+        if (categories.indexOf("Bankruptcy & Insolvency") !== -1) return "High";
+        if (categories.some(c => severe.indexOf(c) !== -1) && score >= 12) return "High";
+        if (score >= 16) return "High";
+        if (score >= 9) return "Medium";
+        if (score >= 4) return "Low";
+        if (score < 0) return "Positive / Monitor";
+        return "Ignore";
+      }
+
+      function riskReason(row) {
+        if (row.categories.indexOf("Bankruptcy & Insolvency") !== -1) return "Bankruptcy or insolvency language detected.";
+        if (row.categories.indexOf("Credit Deterioration & Default") !== -1) return "Default, downgrade, covenant, liquidity, or payment stress detected.";
+        if (row.categories.indexOf("Legal & Regulatory Issues") !== -1) return "Legal, FTC/DOJ/SEC, compliance, or investigation risk detected.";
+        if (row.categories.indexOf("Corporate Actions") !== -1) return "Asset sale, divestiture, acquisition, or strategic transaction detected.";
+        if (row.categories.indexOf("Financing & Debt Activity") !== -1) return "Debt, refinancing, credit agreement, or funding activity detected.";
+        if (row.categories.indexOf("Operational Risk Indicators") !== -1) return "Operational disruption, closures, layoffs, or cyber risk detected.";
+        if (row.categories.indexOf("Positive Credit Signals") !== -1) return "Possible positive credit signal.";
         return "Potentially relevant for credit review.";
       }
 
-      function analyze() {
-        try {
-          const minPriority = el.minPriority.value;
-          const search = el.searchBox.value.toLowerCase().trim();
-          const categoryFilter = el.categoryFilter.value;
-          const watchlist = el.watchlistText.value;
+      function normalizeTokens(text) {
+        return String(text || "")
+          .toLowerCase()
+          .replace(/group 1 automotive/g, "group1")
+          .replace(/lithia uk/g, "lithiauk")
+          .replace(/jaguar land rover/g, "jlr")
+          .replace(/acquires?|acquired|acquisition/g, "acquire")
+          .replace(/sells?|sold|sale|dispose|divestiture/g, "sell")
+          .replace(/dealerships?/g, "dealer")
+          .replace(/sites?/g, "site")
+          .replace(/[^a-z0-9\s]/g, " ")
+          .split(/\s+/)
+          .filter(Boolean)
+          .filter(t => t.length > 2)
+          .filter(t => ["the","and","for","with","from","into","over","here","are","all","this","that","has","have","will","its","inc","news","group"].indexOf(t) === -1);
+      }
 
-          let articles = extractArticleBlocks(el.alertText.value);
-          parsedChunkCount = articles.length;
+      function articleEventKey(row) {
+        const text = [row.title, row.excerpt, row.entities.join(" ")].join(" ");
+        const tokens = normalizeTokens(text);
 
-          let results = articles.map(a => {
-            const scored = scoreArticle(a, watchlist);
+        const importantTokens = [];
+        const mustKeep = ["group1","lithiauk","jlr","ftc","deceptive","pricing","lawsuit","investigation","sell","acquire","dealer","site","asset","divestiture","regulatory"];
+        mustKeep.forEach(t => {
+          if (tokens.indexOf(t) !== -1) importantTokens.push(t);
+        });
+
+        tokens.forEach(t => {
+          if (importantTokens.indexOf(t) === -1 && importantTokens.length < 6) importantTokens.push(t);
+        });
+
+        return importantTokens.slice(0, 6).sort().join("|");
+      }
+
+      function dedupeGrouped(rows) {
+        const groups = {};
+
+        rows.forEach(row => {
+          const key = articleEventKey(row);
+          if (!groups[key]) {
+            groups[key] = {
+              id: row.id,
+              priority: row.priority,
+              score: row.score,
+              title: row.title,
+              entities: row.entities.slice(),
+              categories: row.categories.slice(),
+              matches: JSON.parse(JSON.stringify(row.matches)),
+              sourceLabel: row.sourceLabel,
+              reason: row.reason,
+              url: row.url,
+              domain: row.domain,
+              excerpt: row.excerpt,
+              raw: row.raw,
+              sourceCount: 1
+            };
+          } else {
+            const g = groups[key];
+            g.score = Math.max(g.score, row.score);
+            g.sourceCount += 1;
+
+            if (row.title.length > g.title.length) g.title = row.title;
+            if (row.excerpt.length > g.excerpt.length) g.excerpt = row.excerpt;
+            if (!g.url && row.url) g.url = row.url;
+            if (!g.domain && row.domain) g.domain = row.domain;
+
+            g.categories = Array.from(new Set(g.categories.concat(row.categories)));
+            g.entities = Array.from(new Set(g.entities.concat(row.entities)));
+
+            Object.keys(row.matches).forEach(cat => {
+              if (!g.matches[cat]) g.matches[cat] = [];
+              g.matches[cat] = Array.from(new Set(g.matches[cat].concat(row.matches[cat])));
+            });
+          }
+        });
+
+        return Object.values(groups).map(row => {
+          row.priority = priority(row.score, row.categories);
+          if (row.sourceCount > 1) {
+            row.reason += " Duplicate story grouped (" + row.sourceCount + " sources).";
+          }
+          return row;
+        });
+      }
+
+      function analyze(rawText, watchlistText, minPriority, categoryFilter, query, sortBy) {
+        const articles = extractGoogleAlertArticles(rawText);
+        parsedChunkCount = articles.length;
+
+        const rows = articles
+          .filter(article => !isLowValueArticle(article))
+          .map((article, idx) => {
+            const scored = scoreArticle(article, watchlistText);
+            const pri = priority(scored.score, scored.categories);
+
             return {
-              ...a,
-              ...scored,
-              domain: domainFromUrl(a.url),
-              reason: reasonFor(scored.categories)
+              id: idx + 1,
+              priority: pri,
+              score: scored.score,
+              title: article.title,
+              entities: scored.entities,
+              categories: scored.categories,
+              matches: scored.matches,
+              sourceLabel: scored.sourceLabel,
+              reason: riskReason({ categories: scored.categories }),
+              url: article.url || "",
+              domain: article.url ? domainFromUrl(article.url) : "",
+              excerpt: article.snippet || excerpt(article.raw, 350),
+              raw: article.raw
             };
           });
 
-          results = results.filter(r => PRIORITY_RANK[r.priority] >= PRIORITY_RANK[minPriority]);
+        let deduped = dedupeGrouped(rows)
+          .filter(x => PRIORITY_RANK[x.priority] >= PRIORITY_RANK[minPriority])
+          .filter(x => categoryFilter === "All categories" || x.categories.indexOf(categoryFilter) !== -1);
 
-          if (categoryFilter !== "All categories") {
-            results = results.filter(r => r.categories.includes(categoryFilter));
-          }
-
-          if (search) {
-            results = results.filter(r =>
-              `${r.title} ${r.excerpt} ${r.reason} ${r.categories.join(" ")} ${r.entities.join(" ")}`
-                .toLowerCase()
-                .includes(search)
-            );
-          }
-
-          if (el.sortBy.value === "score") {
-            results.sort((a, b) => b.score - a.score);
-          } else if (el.sortBy.value === "title") {
-            results.sort((a, b) => a.title.localeCompare(b.title));
-          } else {
-            results.sort((a, b) => (PRIORITY_RANK[b.priority] - PRIORITY_RANK[a.priority]) || (b.score - a.score));
-          }
-
-          lastResults = results;
-          renderResults(results);
-          updateSummary(results);
-
-          setStatus(`Parsed ${parsedChunkCount} article block(s). Kept ${results.length} credit-relevant item(s).`, "ok");
-        } catch (err) {
-          console.error(err);
-          setStatus("Analysis failed: " + err.message, "error");
+        const q = String(query || "").toLowerCase().trim();
+        if (q) {
+          deduped = deduped.filter(r =>
+            [
+              r.title, r.excerpt, r.priority, r.reason,
+              r.categories.join(" "), r.entities.join(" "),
+              r.domain, JSON.stringify(r.matches)
+            ].join(" ").toLowerCase().indexOf(q) !== -1
+          );
         }
+
+        if (sortBy === "score") {
+          deduped.sort((a, b) => b.score - a.score);
+        } else if (sortBy === "title") {
+          deduped.sort((a, b) => a.title.localeCompare(b.title));
+        } else {
+          deduped.sort((a, b) => (PRIORITY_RANK[b.priority] - PRIORITY_RANK[a.priority]) || (b.score - a.score));
+        }
+
+        return deduped;
+      }
+
+      function badgeClass(priority) {
+        if (priority === "High") return "priority-high";
+        if (priority === "Medium") return "priority-medium";
+        if (priority === "Low") return "priority-low";
+        if (priority === "Positive / Monitor") return "priority-positive";
+        return "badge-neutral";
       }
 
       function renderResults(results) {
@@ -829,86 +1159,93 @@
         }
 
         el.results.innerHTML = results.map(r => {
-          const chips = Object.entries(r.matches)
-            .flatMap(([cat, hits]) => hits.map(hit => `<span class="chip" title="${escapeHtml(cat)}">${escapeHtml(hit)}</span>`))
+          const chips = Object.keys(r.matches)
+            .flatMap(cat => r.matches[cat].slice(0, 10).map(hit =>
+              '<span class="chip" title="' + escapeHtml(cat) + '">' + escapeHtml(hit) + '</span>'
+            ))
             .join("");
 
-          return `
-            <div class="result-card">
-              <div class="badges">
-                <span class="badge ${r.priority === "High" ? "priority-high" : r.priority === "Medium" ? "priority-medium" : r.priority === "Low" ? "priority-low" : "priority-positive"}">${escapeHtml(r.priority)}</span>
-                <span class="badge badge-neutral">Score ${r.score}</span>
-                <span class="badge badge-neutral">${escapeHtml(r.domain || "")}</span>
-              </div>
-              <div class="title">${escapeHtml(r.title)}</div>
-              <div class="reason">${escapeHtml(r.reason)}</div>
-              <div class="excerpt">${escapeHtml(r.excerpt)}</div>
-              <div class="meta">
-                <div><strong>Entities:</strong> ${r.entities.length ? escapeHtml(r.entities.join(", ")) : "None"}</div>
-                <div><strong>Categories:</strong> ${r.categories.length ? escapeHtml(r.categories.join(", ")) : "None"}</div>
-              </div>
-              <div class="chips">${chips}</div>
-              <div class="links"><a href="${escapeHtml(r.url)}" target="_blank" rel="noreferrer         `;
+          const rawBlock = expandedRawId === r.id
+            ? '<pre class="raw">' + escapeHtml(r.raw) + '</pre>'
+            : '';
+
+          const urlLink = r.url
+            ? '<a href="' + escapeHtml(r.url) + '" target="_blank" rel="noreferrer">Open source</a>'
+            : '';
+
+          return '' +
+            '<div class="result-card">' +
+              '<div class="badges">' +
+                '<span class="badge ' + badgeClass(r.priority) + '">' + escapeHtml(r.priority) + '</span>' +
+                '<span class="badge badge-neutral">Score ' + r.score + '</span>' +
+                '<span class="badge badge-neutral">' + escapeHtml(r.sourceLabel) + '</span>' +
+                (r.domain ? '<span class="badge badge-neutral">' + escapeHtml(r.domain) + '</span>' : '') +
+              '</div>' +
+              '<div class="title">' + escapeHtml(r.title) + '</div>' +
+              '<div class="reason">' + escapeHtml(r.reason) + '</div>' +
+              '<div class="excerpt">' + escapeHtml(r.excerpt) + '</div>' +
+              '<div class="meta">' +
+                '<div><strong>Entities:</strong> ' + (r.entities.length ? escapeHtml(r.entities.join(", ")) : "None") + '</div>' +
+                '<div><strong>Categories:</strong> ' + (r.categories.length ? escapeHtml(r.categories.join(", ")) : "None") + '</div>' +
+              '</div>' +
+              '<div class="chips">' + chips + '</div>' +
+              '<div class="links">' +
+                urlLink +
+                ' <button data-raw-toggle="' + r.id + '">' + (expandedRawId === r.id ? 'Hide raw text' : 'Show raw text') + '</button>' +
+              '</div>' +
+              rawBlock +
+            '</div>';
         }).join("");
+
+        // attach toggle buttons after rendering
+        Array.from(el.results.querySelectorAll("[data-raw-toggle]")).forEach(btn => {
+          btn.addEventListener("click", function () {
+            const id = Number(this.getAttribute("data-raw-toggle"));
+            expandedRawId = expandedRawId === id ? null : id;
+            renderResults(lastResults);
+          });
+        });
       }
 
       function updateSummary(results) {
-        const counts = { High: 0, Medium: 0, Low: 0, "Positive / Monitor": 0 };
-        results.forEach(r => { if (counts[r.priority] !== undefined) counts[r.priority]++; });
-        el.countHigh.textContent = counts["High"];
-        el.countMedium.textContent = counts["Medium"];
-        el.countLow.textContent = counts["Low"];
-        el.countPositive.textContent = counts["Positive / Monitor"];
+        const counts = {
+          "High": 0,
+          "Medium": 0,
+          "Low": 0,
+          "Positive / Monitor": 0
+        };
+
+        results.forEach(r => {
+          if (counts[r.priority] !== undefined) counts[r.priority]++;
+        });
+
+        el.countHigh.textContent = String(counts["High"]);
+        el.countMedium.textContent = String(counts["Medium"]);
+        el.countLow.textContent = String(counts["Low"]);
+        el.countPositive.textContent = String(counts["Positive / Monitor"]);
       }
 
-      function downloadFile(filename, content, type) {
-        const blob = new Blob([content], { type });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      }
-
-      function downloadCsv() {
-        if (!lastResults.length) return alert("Run an analysis first.");
-        const headers = ["priority","score","title","entities","categories","url","excerpt"];
-        const rows = lastResults.map(r => [
-          r.priority,
-          r.score,
-          r.title,
-          r.entities.join("; "),
-          r.categories.join("; "),
-          r.url,
-          r.excerpt
-        ]);
-        const csv = [headers.join(",")]
-          .concat(rows.map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")))
-          .join("\n");
-        downloadFile("credit_alert_results.csv", csv, "text/csv;charset=utf-8;");
-      }
-
-      function downloadJson() {
-        if (!lastResults.length) return alert("Run an analysis first.");
-        downloadFile("credit_alert_results.json", JSON.stringify(lastResults, null, 2), "application/json");
-      }
-
-      function downloadMarkdown() {
-        if (!lastResults.length) return alert("Run an analysis first.");
-        const md = `# Tyler Secor Intern Project
-
-${lastResults.map((r, i) => `## ${i + 1}. ${r.title}
-- Priority: ${r.priority}
-- Score: ${r.score}
-- Entities: ${r.entities.join(", ") || "None"}
-- Categories: ${r.categories.join(", ") || "None"}
-- URL: ${r.url}
-- Excerpt: ${r.excerpt}
-`).join("\n")}`;
-        downloadFile("credit_alert_report.md", md, "text/markdown;charset=utf-8;");
+      function runAnalysis() {
+        try {
+          setStatus("", "");
+          lastResults = analyze(
+            el.alertText.value,
+            el.watchlistText.value,
+            el.minPriority.value,
+            el.categoryFilter.value,
+            el.searchBox.value,
+            el.sortBy.value
+          );
+          updateSummary(lastResults);
+          renderResults(lastResults);
+          setStatus(
+            "Parsed " + parsedChunkCount + " article block(s). Kept " + lastResults.length + " credit-relevant item(s).",
+            "ok"
+          );
+        } catch (err) {
+          console.error(err);
+          setStatus("Analysis failed: " + err.message, "error");
+        }
       }
 
       function toggleKeywordLibrary() {
@@ -920,9 +1257,9 @@ ${lastResults.map((r, i) => `## ${i + 1}. ${r.title}
         try {
           const parsed = JSON.parse(el.keywordLibrary.value);
 
-          Object.entries(parsed).forEach(([cat, cfg]) => {
-            if (!cfg.terms || !Array.isArray(cfg.terms)) {
-              throw new Error(`Category "${cat}" must have a terms array`);
+          Object.keys(parsed).forEach(cat => {
+            if (!parsed[cat].terms || !Array.isArray(parsed[cat].terms)) {
+              throw new Error('Category "' + cat + '" must have a terms array');
             }
           });
 
@@ -938,6 +1275,105 @@ ${lastResults.map((r, i) => `## ${i + 1}. ${r.title}
         }
       }
 
+      function downloadFile(filename, content, type) {
+        const blob = new Blob([content], { type: type });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+
+      function toCsv(rows) {
+        const headers = [
+          "priority","score","reason","title","entities","categories",
+          "matched_keywords","source_quality","url","source_domain","excerpt"
+        ];
+
+        function esc(value) {
+          return '"' + String(value == null ? "" : value).replace(/"/g, '""') + '"';
+        }
+
+        const lines = rows.map(r => [
+          r.priority,
+          r.score,
+          r.reason,
+          r.title,
+          r.entities.join("; "),
+          r.categories.join("; "),
+          JSON.stringify(r.matches),
+          r.sourceLabel,
+          r.url,
+          r.domain,
+          r.excerpt
+        ].map(esc).join(","));
+
+        return [headers.join(",")].concat(lines).join("\n");
+      }
+
+      function toMarkdown(rows) {
+        const counts = rows.reduce((acc, r) => {
+          acc[r.priority] = (acc[r.priority] || 0) + 1;
+          return acc;
+        }, {});
+
+        return `# Tyler Secor Intern Project
+
+Generated: ${new Date().toLocaleString()}
+
+## Summary
+- High: ${counts["High"] || 0}
+- Medium: ${counts["Medium"] || 0}
+- Low: ${counts["Low"] || 0}
+- Positive / Monitor: ${counts["Positive / Monitor"] || 0}
+
+${rows.map((r, i) => `
+
+## ${i + 1}. ${r.title}
+Priority: ${r.priority}
+Score: ${r.score}
+Reason: ${r.reason}
+Entities: ${r.entities.join(", ") || "None"}
+Categories: ${r.categories.join(", ") || "None"}
+Source Quality: ${r.sourceLabel}
+Source: ${r.domain || "Unknown"}
+URL: ${r.url || "N/A"}
+
+Matched Keywords:
+${Object.entries(r.matches).map(([cat, hits]) => `- ${cat}: ${hits.join(", ")}`).join("\n") || "- None"}
+
+Excerpt:
+${r.excerpt}
+`).join("\n")}`;
+      }
+
+      function downloadCsv() {
+        if (!lastResults.length) {
+          alert("Run an analysis first.");
+          return;
+        }
+        downloadFile("credit_alert_results.csv", toCsv(lastResults), "text/csv;charset=utf-8;");
+      }
+
+      function downloadJson() {
+        if (!lastResults.length) {
+          alert("Run an analysis first.");
+          return;
+        }
+        downloadFile("credit_alert_results.json", JSON.stringify(lastResults, null, 2), "application/json");
+      }
+
+      function downloadMarkdown() {
+        if (!lastResults.length) {
+          alert("Run an analysis first.");
+          return;
+        }
+        downloadFile("credit_alert_report.md", toMarkdown(lastResults), "text/markdown;charset=utf-8;");
+      }
+
       function clearAllInputs() {
         el.alertText.value = "";
         el.watchlistText.value = "";
@@ -946,11 +1382,14 @@ ${lastResults.map((r, i) => `## ${i + 1}. ${r.title}
         el.categoryFilter.value = "All categories";
         el.sortBy.value = "priority";
         el.fileInput.value = "";
+        expandedRawId = null;
         lastResults = [];
         parsedChunkCount = 0;
+        setStatus("", "");
         updateSummary([]);
         renderResults([]);
-        setStatus("", "");
+        el.shownCount.textContent = "0";
+        el.parsedCount.textContent = "0";
       }
 
       function loadSample() {
@@ -960,139 +1399,87 @@ ${lastResults.map((r, i) => `## ${i + 1}. ${r.title}
           "Morgan County",
           "Decatur Utilities",
           "Sample Health System",
-          "Town of Ashford",
-          "Example Manufacturing Holdings",
-          "Metro Water Authority",
-          "North River Foods",
-          "Westfield Components"
+          "Town of Ashford"
         ].join("\n");
 
         el.alertText.value = `
-https://www.motortrader.com/example1
+[ lithia uk acquires three group 1 automotive sites - motor trader ](https://www.motortrader.com/example1)
 Motor Trader
-Lithia UK acquires three Group 1 Automotive sites in a strategic divestiture.
+Lithia UK has acquired three retail sites from Group 1 Automotive. The deal will see sites in Derby, Chester and Preston transition into the new network.
 
-https://www.am-online.com/example2
+[ lithia uk adds jlr dealerships acquired from group 1 automotive - am-online ](https://www.am-online.com/example2)
 AM-online
-Lithia UK adds JLR dealerships acquired from Group 1 Automotive.
+Lithia UK has acquired three Jaguar Land Rover dealerships from Group 1 Automotive to expand its network.
 
-https://www.thedrive.com/example3
+[ here are all 97 car dealers the ftc threatened over deceptive pricing - the drive ](https://www.thedrive.com/example3)
 The Drive
 Group 1 Automotive appears in a list of dealers the FTC threatened over deceptive pricing.
 
-https://www.reuters.com/example4
-Reuters
-Example Manufacturing Holdings warns of liquidity pressures and refinancing risk.
-
-https://www.businesswire.com/example5
-Business Wire
-Sample Health System announces layoffs and facility closure after revenue decline.
-
-https://www.prnewswire.com/example6
-PR Newswire
-Metro Water Authority receives new funding and improves liquidity.
-
-https://www.marketlegalwatch.com/example7
-Market Legal Watch
-North River Foods faces a class action lawsuit tied to disclosure issues.
-
-https://www.debtmarketupdate.com/example8
-Debt Market Update
-Westfield Components requests a covenant waiver and explores strategic alternatives.
-
-https://www.utilityopsreport.com/example9
-Utility Ops Report
-Decatur Utilities discloses cyberattack causing service interruption.
-
-https://www.publicfinancebulletin.com/example10
-Public Finance Bulletin
-City of Decatur discusses structural deficit and late audit concerns.
+[ o'reilly automotive compare against competitors - investing.com ](https://www.investing.com/example4)
+Investing.com
+Summary table and competitor comparison data including Group 1 Automotive.
         `.trim();
 
-        setStatus("Loaded 10 sample examples.", "ok");
+        runAnalysis();
       }
 
       function populateCategoryFilter() {
-        const categories = ["All categories", ...Object.keys(KEYWORD_LIBRARY)];
-        el.categoryFilter.innerHTML = categories.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
+        const categories = ["All categories"].concat(Object.keys(KEYWORD_LIBRARY));
+        el.categoryFilter.innerHTML = categories.map(c => '<option value="' + escapeHtml(c) + '">' + escapeHtml(c) + '</option>').join("");
         el.categoryFilter.value = "All categories";
       }
 
       function fillKeywordLibrary() {
         el.keywordLibrary.value = JSON.stringify(KEYWORD_LIBRARY, null, 2);
-        el.keywordCount.textContent = String(countKeywords(KEYWORD_LIBRARY));
-      }
-
-      function countKeywords(lib) {
-        return Object.values(lib).reduce((sum, cat) => sum + cat.terms.length, 0);
-      }
-
-      async function decodeTextFile(file) {
-        const buffer = await file.arrayBuffer();
-
-        // try UTF-8 first
-        try {
-          const text = new TextDecoder("utf-8", { fatal: false }).decode(buffer);
-          if (looksLikeReadableText(text)) return text;
-        } catch {}
-
-        // fallback windows-1252
-        try {
-          const text = new TextDecoder("windows-1252", { fatal: false }).decode(buffer);
-          if (looksLikeReadableText(text)) return text;
-        } catch {}
-
-        // final fallback
-        const text = new TextDecoder().decode(buffer);
-        return text;
-      }
-
-      function looksLikeReadableText(text) {
-        if (!text) return false;
-        const sample = text.slice(0, 4000);
-        const controlChars = (sample.match(/[\x00-\x08\x0E-\x1F]/g) || []).length;
-        return controlChars < sample.length * 0.02;
+        const count = Object.values(KEYWORD_LIBRARY).reduce((sum, cat) => sum + cat.terms.length, 0);
+        el.keywordCount.textContent = String(count);
       }
 
       async function extractTextFromPdf(arrayBuffer) {
         if (!window.pdfjsLib) throw new Error("PDF parser not loaded.");
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
         let fullText = "";
-        for (let i = 1; i <= pdf.numPages; i++) {
-          const page = await pdf.getPage(i);
+
+        for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+          const page = await pdf.getPage(pageNum);
           const content = await page.getTextContent();
-          fullText += content.items.map(x => x.str).join(" ") + "\n\n";
+          const pageText = content.items.map(item => item.str).join(" ");
+          fullText += pageText + "\n\n";
         }
+
         return fullText.trim();
       }
 
       async function extractTextFromDocx(arrayBuffer) {
         if (!window.mammoth) throw new Error("DOCX parser not loaded.");
-        const result = await mammoth.extractRawText({ arrayBuffer });
+        const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
         return String(result.value || "").trim();
       }
 
       async function parseUploadedFile(file) {
-        const lower = file.name.toLowerCase();
+        const name = file.name.toLowerCase();
 
-        if (lower.endsWith(".msg")) {
-          throw new Error("MSG files are not supported in-browser. Please save the email as .eml or paste the text instead.");
+        if (file.size > 15 * 1024 * 1024) {
+          throw new Error(file.name + " is larger than 15MB.");
         }
 
-        if (lower.endsWith(".txt") || lower.endsWith(".md") || lower.endsWith(".log") || lower.endsWith(".csv")) {
-          return normalize(await decodeTextFile(file));
+        if (name.endsWith(".txt") || name.endsWith(".md") || name.endsWith(".log") || name.endsWith(".csv")) {
+          return await file.text();
         }
 
-        if (lower.endsWith(".eml")) {
-          return cleanEmailText(await decodeTextFile(file));
+        if (name.endsWith(".eml")) {
+          const text = await file.text();
+          return cleanEmailText(text);
         }
 
-        if (lower.endsWith(".pdf")) {
-          return await extractTextFromPdf(await file.arrayBuffer());
+        if (name.endsWith(".pdf")) {
+          const buffer = await file.arrayBuffer();
+          return await extractTextFromPdf(buffer);
         }
 
-        if (lower.endsWith(".docx")) {
-          return await extractTextFromDocx(await file.arrayBuffer());
+        if (name.endsWith(".docx")) {
+          const buffer = await file.arrayBuffer();
+          return await extractTextFromDocx(buffer);
         }
 
         throw new Error("Unsupported file type: " + file.name);
@@ -1113,29 +1500,33 @@ City of Decatur discusses structural deficit and late audit concerns.
             if (text && text.trim()) {
               chunks.push(text.trim());
             } else {
-              errors.push(`${file.name}: no readable text found.`);
+              errors.push(file.name + ": no readable text found.");
             }
           } catch (err) {
             console.error(err);
-            errors.push(`${file.name}: ${err.message}`);
+            errors.push(file.name + ": " + err.message);
           }
         }
 
-        el.alertText.value = [el.alertText.value, ...chunks].filter(Boolean).join("\n\n");
+        const current = el.alertText.value;
+        const combined = [current].concat(chunks).filter(Boolean).join("\n\n");
+        el.alertText.value = combined;
 
         if (errors.length && chunks.length) {
-          setStatus(`Loaded ${chunks.length} file(s). Some files had issues: ${errors.join(" | ")}`, "error");
+          setStatus("Loaded " + chunks.length + " file(s). Some files had issues: " + errors.join(" | "), "error");
         } else if (errors.length) {
           setStatus(errors.join(" | "), "error");
         } else {
-          setStatus(`Loaded ${chunks.length} file(s).`, "ok");
+          setStatus("Loaded " + chunks.length + " file(s).", "ok");
         }
       }
 
-      // Bind all buttons
-      el.btnAnalyzeTop.addEventListener("click", analyze);
-      el.btnAnalyzeSide.addEventListener("click", analyze);
-      el.btnRefresh.addEventListener("click", analyze);
+      // -----------------------------
+      // Bind buttons explicitly
+      // -----------------------------
+      el.btnAnalyzeTop.addEventListener("click", runAnalysis);
+      el.btnAnalyzeSide.addEventListener("click", runAnalysis);
+      el.btnRefresh.addEventListener("click", runAnalysis);
       el.btnExportCsv.addEventListener("click", downloadCsv);
       el.btnExportJson.addEventListener("click", downloadJson);
       el.btnExportMarkdown.addEventListener("click", downloadMarkdown);
@@ -1143,251 +1534,20 @@ City of Decatur discusses structural deficit and late audit concerns.
       el.btnApplyKeywords.addEventListener("click", applyCustomKeywords);
       el.btnClear.addEventListener("click", clearAllInputs);
       el.btnLoadSample.addEventListener("click", loadSample);
+
       el.fileInput.addEventListener("change", handleFileUpload);
+      el.searchBox.addEventListener("input", runAnalysis);
+      el.sortBy.addEventListener("change", runAnalysis);
+      el.minPriority.addEventListener("change", runAnalysis);
+      el.categoryFilter.addEventListener("change", runAnalysis);
 
-      // live filters
-      el.searchBox.addEventListener("input", analyze);
-      el.minPriority.addEventListener("change", analyze);
-      el.categoryFilter.addEventListener("change", analyze);
-      el.sortBy.addEventListener("change", analyze);
-
+      // -----------------------------
+      // Startup UI
+      // -----------------------------
       populateCategoryFilter();
       fillKeywordLibrary();
       updateSummary([]);
       setStatus("Ready.", "ok");
-    }
-
-    function buildExpandedKeywordLibrary() {
-      const base = {
-        "Bankruptcy & Insolvency": {
-          severity: 10,
-          terms: [
-            "bankruptcy","filed for bankruptcy","chapter 7","chapter 11","chapter 13","insolvency","insolvent",
-            "voluntary bankruptcy","involuntary bankruptcy","liquidation","liquidation filing","liquidation proceedings",
-            "restructuring","debt restructuring","court protection","creditor protection","administration","receivership",
-            "receiver appointed","trustee appointed","winding up","winding up petition","going into administration",
-            "insolvency filing","financial distress","distressed company","reorganization plan","debt workout",
-            "restructuring plan","restructuring agreement","dip financing","debtor-in-possession",
-            "bankruptcy court filing","defaulted obligations","missed creditor payment","debt discharge",
-            "prepack bankruptcy","out-of-court restructuring","moratorium on payments"
-          ]
-        },
-        "Credit Deterioration & Default": {
-          severity: 9,
-          terms: [
-            "default","payment default","missed payment","delayed payment","past due","delinquent","loan default",
-            "covenant breach","violated covenant","technical default","rating downgrade","credit downgrade",
-            "outlook negative","negative outlook","watchlist negative","credit watch","creditwatch","impaired debt",
-            "distressed exchange","late payment notice","collections action","sent to collections","write-off","charge-off",
-            "arrears","unpaid invoices","bad debt","declining credit profile","increased leverage","liquidity pressures",
-            "financial weakness","inability to pay","debt maturity risk","refinancing risk","bond default",
-            "missed interest payment","missed principal payment","going concern warning","material adverse change",
-            "covenant waiver request","liquidity shortfall","cash flow problems"
-          ]
-        },
-        "Corporate Actions": {
-          severity: 5,
-          terms: [
-            "merger","acquisition","m&a","takeover","buyout","leveraged buyout","spin-off","spinoff","carve-out",
-            "divestiture","asset sale","sale of business","ownership change","management change","ceo resignation",
-            "cfo resignation","board resignation","executive departure","leadership change","restructuring plan announced",
-            "strategic alternatives","exploring sale","change in control","privatization","ipo withdrawal","reverse merger",
-            "joint venture","partnership dissolved","business combination","consolidation","merger agreement",
-            "acquisition financing","deal termination","hostile takeover","activist investor","proxy fight",
-            "shareholder vote","stake sale","minority investment","majority acquisition","asset divestment"
-          ]
-        },
-        "Legal & Regulatory Issues": {
-          severity: 7,
-          terms: [
-            "lawsuit","litigation","legal action","class action","court ruling","judgment","settlement",
-            "regulatory investigation","sec investigation","enforcement action","penalty","fine imposed",
-            "compliance violation","regulatory breach","non-compliance","fraud allegations","accounting fraud",
-            "misstatement","financial restatement","audit issue","material weakness","internal control failure",
-            "whistleblower complaint","subpoena","criminal charges","civil charges","sanctions","export violation",
-            "antitrust investigation","anti-trust investigation","bribery investigation","corruption charges",
-            "money laundering","aml violation","ofac sanctions","license revoked","permit revoked",
-            "cease and desist order","legal dispute","arbitration","court filing","lawsuit filed","sued by",
-            "legal complaint","class action lawsuit","class action filed","securities litigation","shareholder lawsuit",
-            "breach of contract","contract dispute","litigation risk","damages claim","settlement agreement",
-            "settlement reached","legal exposure","significant legal liability","court injunction","injunction granted",
-            "complaint filed","regulatory lawsuit","fraud lawsuit","employment lawsuit","wrongful termination",
-            "patent litigation","ip dispute","environmental litigation","toxic exposure lawsuit","fines imposed",
-            "penalties assessed","enforcement proceeding","doj investigation","sec charges","audit investigation",
-            "insider trading probe","bribery allegations","corruption probe","accounting irregularities",
-            "misreported earnings","disclosure violation","compliance failure","sanction violation","regulatory penalty",
-            "cease operations order","license suspended","regulatory shutdown","prosecution","criminal investigation",
-            "guilty plea","indictment","ftc","deceptive pricing"
-          ]
-        },
-        "Financial Performance Warning Signs": {
-          severity: 7,
-          terms: [
-            "earnings miss","revenue decline","profit decline","net loss","operating loss","negative ebitda",
-            "margin compression","declining sales","weak outlook","reduced guidance","lowered forecast","profit warning",
-            "lower earnings guidance","declining margins","cost overruns","restructuring charges","inventory buildup",
-            "declining cash flow","cash burn","liquidity concerns","weak demand","lower volumes","declining backlog",
-            "rising expenses","negative free cash flow","poor financial results","earnings deterioration",
-            "declining profitability","financial instability","shrinking market share","decreased bookings","customer loss",
-            "contract cancellations","revenue shortfall","adverse financial results","rising debt levels",
-            "leverage increase","interest burden","capital constraints","financial strain"
-          ]
-        },
-        "Financing & Debt Activity": {
-          severity: 6,
-          terms: [
-            "new debt issuance","bond issuance","loan refinancing","refinancing delay","credit facility","revolver drawdown",
-            "liquidity facility","debt repayment","debt buyback","debt restructuring","increased borrowing","leverage ratio",
-            "covenant amendment","waiver granted","loan amendment","refinancing risk","bridge loan","emergency funding",
-            "capital raise","equity issuance","secondary offering","private placement","convertible debt",
-            "preferred stock issuance","capital injection","funding shortfall","lender negotiations","drawn credit line",
-            "funding crisis","debt maturity extension","credit agreement","amended credit agreement","restated credit agreement",
-            "credit facility amendment","revolving credit facility","term loan b","new loan facility","borrowing base reduction",
-            "facility extension","covenant reset","covenant breach notice","loan acceleration","credit line reduction",
-            "drawn revolver","refinancing transaction"
-          ]
-        },
-        "Operational Risk Indicators": {
-          severity: 6,
-          terms: [
-            "plant closure","factory shutdown","layoffs","workforce reduction","job cuts","furloughs","strike",
-            "labor dispute","supply chain disruption","shortage","production halt","operational disruption","system outage",
-            "cyberattack","data breach","it failure","business interruption","facility damage","natural disaster impact",
-            "operational losses","delayed shipments","customer complaints spike","vendor termination","contract breach",
-            "key supplier loss","major recall","product defect","quality issue","safety incident","accident",
-            "store closures","location closures","facility closures","branch closures","permanent closure",
-            "shutdown announcement","business shutdown","plant shutdown","exit market","closing operations",
-            "ceasing operations","mass layoffs","restructuring layoffs","employee layoffs","headcount reduction",
-            "furlough employees","workforce downsizing","declining production","production cuts","operational restructuring",
-            "demand slowdown","supply chain breakdown","major disruption","delayed project","project cancellation",
-            "halted operations","reduced capacity","operational inefficiencies","plant idled","underutilized assets",
-            "production delays","supplier default","vendor loss","contract termination"
-          ]
-        },
-        "Identity & Corporate Changes": {
-          severity: 4,
-          terms: [
-            "name change","dba change","rebranding","ticker symbol change","legal name updated","entity merger",
-            "new parent company","subsidiary change","corporate restructuring","headquarters relocation","office closure",
-            "new registration","deregistration","entity dissolved","entity formed","beneficial ownership change",
-            "ownership transfer","affiliated company","ultimate parent","registration update"
-          ]
-        },
-        "External & Market Risks": {
-          severity: 4,
-          terms: [
-            "economic downturn","recession","inflation impact","interest rate increase","credit tightening","market volatility",
-            "industry decline","sector downturn","commodity price spike","oil price drop","currency devaluation",
-            "exchange rate risk","geopolitical risk","trade restrictions","tariffs imposed","sanctions risk",
-            "market disruption","demand shock","regulatory changes","policy shift"
-          ]
-        },
-        "Ownership & Insider Activity": {
-          severity: 5,
-          terms: [
-            "insider buying","insider purchase","insider accumulation","insider selling","insider sale",
-            "executive stock sale","ceo stock sale","cfo stock sale","director sold shares","officer sold shares",
-            "insider transaction","form 4 filing","sec form 4","beneficial ownership filing","significant shareholder sale",
-            "block trade","large stock sale","insider disposing shares","insider increasing stake",
-            "change in ownership","change of control","controlling stake acquired","majority shareholder change",
-            "new controlling shareholder","ownership transferred","equity stake sale","stake divestiture","partial stake sale",
-            "acquisition of stake","shareholder dilution","dilution","ownership restructuring","institutional exit",
-            "hedge fund exit","activist investor involvement","activist investor stake","proxy contest","ownership shift",
-            "investor exit"
-          ]
-        },
-        "Tender Offers, Notes, Bonds & Capital Markets": {
-          severity: 6,
-          terms: [
-            "tender offer","cash tender offer","exchange offer","debt tender offer","bond tender offer",
-            "partial tender offer","issuer tender offer","third-party tender offer","senior notes","senior secured notes",
-            "senior unsecured notes","subordinated notes","convertible notes","bond issuance","corporate bonds",
-            "high-yield bonds","junk bonds","notes offering","private notes placement","debt securities issuance",
-            "distressed debt exchange","debt exchange offer","debt repurchase","tender for notes",
-            "bondholder negotiations","missed coupon payment","default on bonds","debt maturity wall",
-            "refinancing concerns","liquidity crisis","debt extension"
-          ]
-        },
-        "Executive & Officer Changes": {
-          severity: 5,
-          terms: [
-            "ceo resignation","ceo departure","ceo replaced","cfo resignation","executive turnover","management shakeup",
-            "leadership restructuring","board changes","director resignation","new cfo appointed","interim ceo",
-            "sudden executive exit","executive termination","executive compensation dispute","key officer departure",
-            "leadership uncertainty","governance concerns","board investigation","executive misconduct",
-            "leadership transition","change in key management","top executive exit","senior leadership departure",
-            "management restructuring","whistleblower against executive","executive legal issue","executive indicted",
-            "executive fraud","executive charged","executive scandal","change in major officers","change in major officer",
-            "major officer change","officer change","officer resignation","officer departure"
-          ]
-        },
-        "Large Projects & Capital Risk": {
-          severity: 5,
-          terms: [
-            "major project announced","large capital project","infrastructure project","project financing",
-            "construction delay","cost overruns","project delay","budget overrun","funding gap","project halted",
-            "project cancellation","capital expenditure increase","capex spike","capex reduction","delayed rollout",
-            "expansion risk","large investment","expansion plan","new facility build","project uncertainty",
-            "delayed completion","cost inflation","funding challenge","construction risk","execution risk",
-            "development delay","over budget","failed project","suspended project","regulatory delay",
-            "large project","bond funded project","capital project bonds","municipal bond project"
-          ]
-        },
-        "Share Repurchases & Equity Actions": {
-          severity: 4,
-          terms: [
-            "share repurchase","stock buyback","repurchase program","accelerated share repurchase","asr program",
-            "buyback suspension","reduced buyback","equity issuance","stock offering","secondary offering","dilution risk",
-            "equity raise","capital raise","private placement","convertible offering","preferred equity","rights offering",
-            "dividend suspension","dividend cut","dividend eliminated","reduced dividend","shareholder return change",
-            "payout reduction","dividend risk","special dividend","dividend policy change","capital allocation shift",
-            "share dilution","stock issuance","warrant issuance","equity financing","new shares issued",
-            "listing change","delisting risk","nyse delisting notice","nasdaq delisting","trading halt",
-            "suspended trading","equity volatility","stock collapse","repurchasing shares","repurchase shares",
-            "share buyback"
-          ]
-        },
-        "Positive Credit Signals": {
-          severity: -3,
-          terms: [
-            "rating upgraded","credit upgrade","positive outlook","debt reduction","deleveraging","record revenue",
-            "strong liquidity","improved margins","budget surplus","grant awarded","contract awarded","new funding",
-            "federal funding","state funding","capital investment","refinanced debt","lower interest cost",
-            "improved financial position","debt paid down","liquidity improved","strong cash flow"
-          ]
-        }
-      };
-
-      const expanded = {};
-      Object.entries(base).forEach(([cat, cfg]) => {
-        const set = new Set();
-
-        cfg.terms.forEach(term => {
-          const t = term.trim();
-          if (!t) return;
-          set.add(t);
-
-          if (t.includes("-")) set.add(t.replace(/-/g, " "));
-          if (t.includes(" ")) set.add(t.replace(/\s+/g, "-"));
-          if (t.includes(" and ")) set.add(t.replace(/\sand\s/g, " & "));
-          if (t.includes(" & ")) set.add(t.replace(/\s&\s/g, " and "));
-          if (t.includes("'")) set.add(t.replace(/'/g, ""));
-          if (t.endsWith(" investigation")) set.add(t.replace(" investigation", " probe"));
-          if (t.endsWith(" sale")) set.add(t.replace(" sale", " selling"));
-          if (t.endsWith(" closure")) set.add(t.replace(" closure", " closing"));
-          if (t.endsWith(" reduction")) set.add(t.replace(" reduction", " decrease"));
-          if (t.endsWith(" funding")) set.add(t.replace(" funding", " financing"));
-          if (t.endsWith(" default")) set.add(t.replace(" default", " delinquency"));
-          if (t.startsWith("new ")) set.add(t.replace(/^new\s+/, ""));
-        });
-
-        expanded[cat] = {
-          severity: cfg.severity,
-          terms: Array.from(set).sort()
-        };
-      });
-
-      return expanded;
     }
   </script>
 </body>
