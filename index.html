@@ -3,51 +3,122 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Credit Alert Risk Filter</title>
+  <title>Tyler Secor Intern Project</title>
+
+  <!-- Document parsers -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://unpkg.com/mammoth/mammoth.browser.min.js"></script>
+
   <style>
     :root{
-      --bg:#f4f7fb;
+      --bg:#f7f8f5;
       --card:#ffffff;
-      --text:#1f2937;
-      --muted:#6b7280;
-      --line:#d1d5db;
-      --primary:#0f172a;
-      --primary-2:#1d4ed8;
-      --high-bg:#fee2e2;
-      --high-text:#991b1b;
-      --med-bg:#ffedd5;
-      --med-text:#9a3412;
-      --low-bg:#fef3c7;
-      --low-text:#92400e;
-      --pos-bg:#dcfce7;
+      --text:#15221c;
+      --muted:#5b675f;
+      --line:#d6ddd7;
+
+      /* Bank Independent-inspired palette */
+      --primary:#1f4d3b;
+      --primary-dark:#17392c;
+      --primary-soft:#edf5f1;
+      --accent:#c59b3a;
+      --accent-soft:#f7f0dd;
+
+      --high-bg:#fde8e8;
+      --high-text:#9b1c1c;
+
+      --med-bg:#fff1df;
+      --med-text:#9b5312;
+
+      --low-bg:#fff7d6;
+      --low-text:#8a5a00;
+
+      --pos-bg:#e5f6ea;
       --pos-text:#166534;
-      --chip:#e5e7eb;
+
+      --chip:#e9eeea;
     }
 
     * { box-sizing: border-box; }
 
     body {
       margin: 0;
-      font-family: Arial, Helvetica, sans-serif;
-      background: var(--bg);
+      font-family: "Segoe UI", Arial, Helvetica, sans-serif;
+      background: linear-gradient(180deg, #f9fbf9 0%, #f3f6f4 100%);
       color: var(--text);
     }
 
     .container {
-      max-width: 1400px;
+      max-width: 1460px;
       margin: 0 auto;
       padding: 24px;
     }
 
-    h1 {
-      margin: 0 0 8px 0;
-      font-size: 34px;
+    .hero {
+      background: linear-gradient(135deg, var(--primary) 0%, #245844 55%, #2c6750 100%);
+      color: white;
+      border-radius: 24px;
+      padding: 26px 28px;
+      margin-bottom: 18px;
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: 0 12px 30px rgba(24, 57, 44, 0.18);
     }
 
-    .subtitle {
-      color: var(--muted);
-      margin-bottom: 24px;
+    .hero-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+
+    .brand-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.14);
+      color: #fffbe8;
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+
+    .brand-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--accent);
+      box-shadow: 0 0 0 2px rgba(255,255,255,0.15);
+    }
+
+    h1 {
+      margin: 0 0 8px 0;
+      font-size: 36px;
+      letter-spacing: -0.02em;
+    }
+
+    .hero-subtitle {
+      color: rgba(255,255,255,0.88);
+      max-width: 920px;
       line-height: 1.5;
+      font-size: 15px;
+    }
+
+    .hero-right {
+      min-width: 200px;
+      text-align: right;
+      color: rgba(255,255,255,0.88);
+      font-size: 13px;
+    }
+
+    .hero-right strong {
+      display: block;
+      font-size: 14px;
+      color: white;
+      margin-bottom: 4px;
     }
 
     .top-actions {
@@ -65,7 +136,13 @@
       border-radius: 12px;
       cursor: pointer;
       font-size: 14px;
-      font-weight: 600;
+      font-weight: 700;
+      transition: all 0.15s ease;
+    }
+
+    .btn:hover {
+      opacity: 0.95;
+      transform: translateY(-1px);
     }
 
     .btn.secondary {
@@ -74,8 +151,10 @@
       border: 1px solid var(--line);
     }
 
-    .btn:hover {
-      opacity: 0.92;
+    .btn.gold {
+      background: var(--accent);
+      color: #2f2410;
+      border: 1px solid #b98f31;
     }
 
     .summary-grid {
@@ -90,6 +169,7 @@
       border: 1px solid var(--line);
       border-radius: 18px;
       padding: 16px;
+      box-shadow: 0 6px 15px rgba(20, 34, 28, 0.04);
     }
 
     .summary-label {
@@ -105,15 +185,16 @@
 
     .layout {
       display: grid;
-      grid-template-columns: 380px 1fr;
+      grid-template-columns: 390px 1fr;
       gap: 18px;
     }
 
     .panel {
       background: var(--card);
       border: 1px solid var(--line);
-      border-radius: 18px;
+      border-radius: 20px;
       padding: 16px;
+      box-shadow: 0 6px 15px rgba(20, 34, 28, 0.04);
     }
 
     .panel h2 {
@@ -125,7 +206,7 @@
     .muted {
       color: var(--muted);
       font-size: 14px;
-      line-height: 1.4;
+      line-height: 1.45;
     }
 
     .field {
@@ -149,6 +230,7 @@
       font-size: 14px;
       font-family: inherit;
       background: white;
+      color: var(--text);
     }
 
     .field textarea {
@@ -157,11 +239,12 @@
     }
 
     .upload-box {
-      border: 2px dashed var(--line);
+      border: 2px dashed #b7c4bb;
       border-radius: 16px;
       padding: 18px;
       text-align: center;
-      background: #fafafa;
+      background: var(--primary-soft);
+      color: var(--text);
     }
 
     .upload-box input {
@@ -211,13 +294,6 @@
       padding: 16px;
     }
 
-    .result-top {
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      align-items: flex-start;
-    }
-
     .badges {
       display: flex;
       flex-wrap: wrap;
@@ -237,31 +313,31 @@
     .priority-high {
       background: var(--high-bg);
       color: var(--high-text);
-      border-color: #fecaca;
+      border-color: #f8caca;
     }
 
     .priority-medium {
       background: var(--med-bg);
       color: var(--med-text);
-      border-color: #fed7aa;
+      border-color: #ffd9ac;
     }
 
     .priority-low {
       background: var(--low-bg);
       color: var(--low-text);
-      border-color: #fde68a;
+      border-color: #f7e28a;
     }
 
     .priority-positive {
       background: var(--pos-bg);
       color: var(--pos-text);
-      border-color: #bbf7d0;
+      border-color: #bce8c8;
     }
 
     .badge-neutral {
-      background: #f3f4f6;
+      background: #f3f5f4;
       color: #374151;
-      border-color: #e5e7eb;
+      border-color: #e6ebe8;
     }
 
     .title {
@@ -274,10 +350,11 @@
     .reason {
       font-weight: 700;
       margin-bottom: 8px;
+      color: var(--primary-dark);
     }
 
     .excerpt {
-      color: #475569;
+      color: #46574d;
       line-height: 1.5;
       margin-bottom: 12px;
     }
@@ -299,7 +376,7 @@
 
     .chip {
       background: var(--chip);
-      color: #374151;
+      color: #33413a;
       padding: 6px 10px;
       border-radius: 999px;
       font-size: 12px;
@@ -313,7 +390,7 @@
     }
 
     .links a, .links button {
-      color: var(--primary-2);
+      color: #1a5fb4;
       background: none;
       border: none;
       padding: 0;
@@ -323,8 +400,8 @@
     }
 
     pre.raw {
-      background: #0f172a;
-      color: #e5e7eb;
+      background: #102119;
+      color: #e5eee8;
       padding: 12px;
       border-radius: 12px;
       overflow: auto;
@@ -340,12 +417,19 @@
       padding: 40px 20px;
       border: 1px dashed var(--line);
       border-radius: 16px;
-      background: #fafafa;
+      background: #fafcfa;
     }
 
     .small {
       font-size: 12px;
       color: var(--muted);
+    }
+
+    .footer-note {
+      margin-top: 18px;
+      font-size: 12px;
+      color: var(--muted);
+      text-align: center;
     }
 
     @media (max-width: 1100px) {
@@ -375,15 +459,32 @@
       .toolbar-right select {
         width: 100%;
       }
+      .hero-right {
+        text-align: left;
+      }
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>Credit Alert Risk Filter</h1>
-    <div class="subtitle">
-      Upload or paste Gmail / Google Alert blocks, score them against a broad credit-risk keyword library,
-      detect watched entities, review only the relevant items, and export results.
+    <div class="hero">
+      <div class="hero-top">
+        <div>
+          <div class="brand-chip">
+            <span class="brand-dot"></span>
+            Bank Independent Theme
+          </div>
+          <h1>Tyler Secor Intern Project</h1>
+          <div class="hero-subtitle">
+            Credit Alert Risk Filter for paste-in Google Alert blocks and uploaded documents.
+            Upload text, PDF, DOCX, or email exports, detect credit-relevant items, and export the final review set.
+          </div>
+        </div>
+        <div class="hero-right">
+          <strong>Credit Alert Workflow</strong>
+          Upload or paste → Filter → Review → Export
+        </div>
+      </div>
     </div>
 
     <div class="top-actions">
@@ -391,7 +492,7 @@
       <button class="btn" onclick="downloadJson()">Export JSON</button>
       <button class="btn" onclick="downloadMarkdown()">Export Report</button>
       <button class="btn secondary" onclick="toggleKeywordLibrary()">Show / Hide Keyword Library</button>
-      <button class="btn secondary" onclick="loadSample()">Load Sample Data</button>
+      <button class="btn gold" onclick="loadSample()">Load Sample Data</button>
       <button class="btn secondary" onclick="clearAllInputs()">Clear All</button>
     </div>
 
@@ -422,18 +523,20 @@
       <div class="panel">
         <h2>Inputs & Filters</h2>
         <div class="muted">
-          This version runs entirely in the browser. Paste alert text or upload text files, review the filtered items,
-          and export your results.
+          This version runs entirely in the browser. Paste alert text or upload supported documents, review filtered items,
+          and export results. PDF support works best for text-based PDFs. DOCX extraction is included.
         </div>
 
         <div class="field" style="margin-top:16px;">
-          <label>Upload alert files</label>
+          <label>Upload alert files / documents</label>
           <div class="upload-box">
-            Upload one or more text-based alert files
+            Upload one or more files
             <br />
-            <input type="file" id="fileInput" multiple accept=".txt,.eml,.md,.log" />
+            <input type="file" id="fileInput" multiple accept=".txt,.eml,.md,.log,.csv,.pdf,.docx" />
           </div>
-          <div class="small" style="margin-top:8px;">Supported: .txt, .eml, .md, .log</div>
+          <div class="small" style="margin-top:8px;">
+            Supported: .txt, .eml, .md, .log, .csv, .pdf, .docx
+          </div>
         </div>
 
         <div class="field">
@@ -493,14 +596,23 @@
 
         <div id="results" class="result-list">
           <div class="empty">
-            Paste or upload Google Alert blocks, then click <strong>Analyze Alerts</strong>.
+            Paste or upload Google Alert blocks or supported documents, then click <strong>Analyze Alerts</strong>.
           </div>
         </div>
       </div>
     </div>
+
+    <div class="footer-note">
+      Tyler Secor Intern Project • Bank Independent-themed credit alert workflow
+    </div>
   </div>
 
   <script>
+    // PDF.js worker setup
+    if (window.pdfjsLib) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    }
+
     const PRIORITY_RANK = {
       "High": 4,
       "Medium": 3,
@@ -1037,43 +1149,38 @@
           .join("");
 
         const rawBlock = expandedRawId === r.id
-          ? `<pre class="raw">${escapeHtml(r.raw)}</pre>`
-          : "";
-
-        const urlLink = r.url
+          ? `<pre class="raw">${escapeHtml(r.raw)}</st urlLink = r.url
           ? `${escapeHtml(r.url)}Open source</a>`
           : "";
 
         return `
           <div class="result-card">
-            <div class="result-top">
-              <div style="flex:1;">
-                <div class="badges">
-                  <span class="badge ${badgeClass(r.priority)}">${escapeHtml(r.priority)}</span>
-                  <span class="badge badge-neutral">Score ${r.score}</span>
-                  <span class="badge badge-neutral">${escapeHtml(r.sourceLabel)}</span>
-                  ${r.domain ? `<span class="badge badge-neutral">${escapeHtml(r.domain)}</span>` : ""}
-                </div>
-
-                <div class="title">${escapeHtml(r.title)}</div>
-                <div class="reason">${escapeHtml(r.reason)}</div>
-                <div class="excerpt">${escapeHtml(r.excerpt)}</div>
+            <div style="flex:1;">
+              <div class="badges">
+                <span class="badge ${badgeClass(r.priority)}">${escapeHtml(r.priority)}</span>
+                <span class="badge badge-neutral">Score ${r.score}</span>
+                <span class="badge badge-neutral">${escapeHtml(r.sourceLabel)}</span>
+                ${r.domain ? `<span class="badge badge-neutral">${escapeHtml(r.domain)}</span>` : ""}
               </div>
+
+              <div class="title">${escapeHtml(r.title)}</div>
+              <div class="reason">${escapeHtml(r.reason)}</div>
+              <div class="excerpt">${escapeHtml(r.excerpt)}</div>
+
+              <div class="meta">
+                <div><strong>Entities / Owners:</strong> ${r.entities.length ? escapeHtml(r.entities.join(", ")) : "None detected"}</div>
+                <div><strong>Categories:</strong> ${r.categories.length ? escapeHtml(r.categories.join(", ")) : "None"}</div>
+              </div>
+
+              <div class="chips">${chips}</div>
+
+              <div class="links">
+                ${urlLink}
+                <button onclick="toggleRaw(${r.id})">${expandedRawId === r.id ? "Hide raw text" : "Show raw text"}</button>
+              </div>
+
+              ${rawBlock}
             </div>
-
-            <div class="meta">
-              <div><strong>Entities / Owners:</strong> ${r.entities.length ? escapeHtml(r.entities.join(", ")) : "None detected"}</div>
-              <div><strong>Categories:</strong> ${r.categories.length ? escapeHtml(r.categories.join(", ")) : "None"}</div>
-            </div>
-
-            <div class="chips">${chips}</div>
-
-            <div class="links">
-              ${urlLink}
-              <button onclick="toggleRaw(${r.id})">${expandedRawId === r.id ? "Hide raw text" : "Show raw text"}</button>
-            </div>
-
-            ${rawBlock}
           </div>
         `;
       }).join("");
@@ -1175,7 +1282,7 @@
         return acc;
       }, {});
 
-      return `# Daily Credit Alert Risk Report
+      return `# Tyler Secor Intern Project
 
 Generated: ${new Date().toLocaleString()}
 
@@ -1241,78 +1348,7 @@ ${r.excerpt}
       document.getElementById("minPriority").value = "Low";
       document.getElementById("categoryFilter").value = "All categories";
       document.getElementById("sortBy").value = "priority";
+      document.getElementById("fileInput").value = "";
       expandedRawId = null;
       lastResults = [];
       parsedChunkCount = 0;
-      updateSummary([]);
-      renderResults([]);
-      document.getElementById("shownCount").textContent = "0";
-      document.getElementById("parsedCount").textContent = "0";
-    }
-
-    function loadSample() {
-      document.getElementById("watchlistText").value = [
-        "City of Decatur",
-        "Morgan County",
-        "Decatur Utilities",
-        "Sample Health System",
-        "Example Manufacturing Holdings"
-      ].join("\n");
-
-      document.getElementById("alertText").value = `
-Example Manufacturing Holdings warns of liquidity pressures as refinancing risk rises
-Reuters - Example Manufacturing Holdings reported declining cash flow, covenant breach discussions, and increased leverage. The company said it may seek debt restructuring and is negotiating with lenders. https://www.reuters.com/example1
-
-City of Decatur budget deficit widens, late audit raises concern
-Local News - City of Decatur officials discussed a structural deficit, reserve drawdown, and late audit filing during the latest council meeting. https://www.example.com/decatur
-
-Sample Health System announces layoffs and facility closure amid weak demand
-Business Wire - Sample Health System announced workforce reduction, facility closure, and reduced guidance following revenue decline and operating loss. https://www.businesswire.com/example3
-
-Company receives positive outlook after debt reduction and improved liquidity
-PR Newswire - The issuer reported strong liquidity, debt reduction, and improved financial position. https://www.prnewswire.com/example4
-
-Board investigates executive misconduct after subpoena and accounting irregularities
-SEC Filing - The company disclosed subpoena receipt, board investigation, and material weakness in internal controls. https://www.sec.gov/example5
-      `.trim();
-
-      runAnalysis();
-    }
-
-    function populateCategoryFilter() {
-      const select = document.getElementById("categoryFilter");
-      const categories = ["All categories", ...Object.keys(KEYWORD_LIBRARY)];
-      select.innerHTML = categories.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
-      select.value = "All categories";
-    }
-
-    function fillKeywordLibrary() {
-      const pretty = JSON.stringify(KEYWORD_LIBRARY, null, 2);
-      document.getElementById("keywordLibrary").value = pretty;
-
-      const count = Object.values(KEYWORD_LIBRARY).reduce((sum, cat) => sum + cat.terms.length, 0);
-      document.getElementById("keywordCount").textContent = count;
-    }
-
-    async function handleFileUpload(event) {
-      const files = Array.from(event.target.files || []);
-      if (!files.length) return;
-
-      const texts = await Promise.all(files.map(file => file.text()));
-      const current = document.getElementById("alertText").value;
-      document.getElementById("alertText").value = [current, ...texts].filter(Boolean).join("\n\n");
-    }
-
-    document.getElementById("fileInput").addEventListener("change", handleFileUpload);
-    document.getElementById("searchBox").addEventListener("input", runAnalysis);
-    document.getElementById("sortBy").addEventListener("change", runAnalysis);
-    document.getElementById("minPriority").addEventListener("change", runAnalysis);
-    document.getElementById("categoryFilter").addEventListener("change", runAnalysis);
-
-    populateCategoryFilter();
-    fillKeywordLibrary();
-    updateSummary([]);
-  </script>
-</body>
-</html>
-
