@@ -1345,7 +1345,7 @@ SEC Filing - The company disclosed subpoena receipt, board investigation, and ma
         return await extractTextFromPdf(buffer);
       }
 
-      if (name.endsWith(".docx")) {
+    name.endsWith(".docx")) {
         const buffer = await file.arrayBuffer();
         return await extractTextFromDocx(buffer);
       }
@@ -1360,44 +1360,4 @@ SEC Filing - The company disclosed subpoena receipt, board investigation, and ma
       setStatus("Reading files...", "ok");
 
       const chunks = [];
-      const errors = [];
-
-      for (const file of files) {
-        try {
-          const text = await parseUploadedFile(file);
-          if (text && text.trim()) {
-            chunks.push(text.trim());
-          } else {
-            errors.push(`${file.name}: no readable text found.`);
-          }
-        } catch (err) {
-          console.error(err);
-          errors.push(`${file.name}: ${err.message}`);
-        }
-      }
-
-      const current = document.getElementById("alertText").value;
-      const combined = [current, ...chunks].filter(Boolean).join("\n\n");
-      document.getElementById("alertText").value = combined;
-
-      if (errors.length && chunks.length) {
-        setStatus(`Loaded ${chunks.length} file(s). Some files had issues: ${errors.join(" | ")}`, "error");
-      } else if (errors.length) {
-        setStatus(errors.join(" | "), "error");
-      } else {
-        setStatus(`Loaded ${chunks.length} file(s).`, "ok");
-      }
-    }
-
-    document.getElementById("fileInput").addEventListener("change", handleFileUpload);
-    document.getElementById("searchBox").addEventListener("input", runAnalysis);
-    document.getElementById("sortBy").addEventListener("change", runAnalysis);
-    document.getElementById("minPriority").addEventListener("change", runAnalysis);
-    document.getElementById("categoryFilter").addEventListener("change", runAnalysis);
-
-    populateCategoryFilter();
-    fillKeywordLibrary();
-    updateSummary([]);
-  </script>
-</body>
-</html>
+  
