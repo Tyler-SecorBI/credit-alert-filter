@@ -1581,52 +1581,6 @@ Regional Medical Properties is evaluating restructuring options after a going-co
         btnClear: document.getElementById("btnClear"),
         btnLoadSample: document.getElementById("btnLoadSample")
       };
-const el = {
-  statusBox: document.getElementById("statusBox"),
-  alertText: document.getElementById("alertText"),
-  watchlistText: document.getElementById("watchlistText"),
-  minPriority: document.getElementById("minPriority"),
-  categoryFilter: document.getElementById("categoryFilter"),
-  searchBox: document.getElementById("searchBox"),
-  sortBy: document.getElementById("sortBy"),
-  sampleSelect: document.getElementById("sampleSelect"),
-  results: document.getElementById("results"),
-  shownCount: document.getElementById("shownCount"),
-  parsedCount: document.getElementById("parsedCount"),
-  countHigh: document.getElementById("countHigh"),
-  countMedium: document.getElementById("countMedium"),
-  countLow: document.getElementById("countLow"),
-  countPositive: document.getElementById("countPositive"),
-  keywordCount: document.getElementById("keywordCount"),
-  keywordLibraryWrap: document.getElementById("keywordLibraryWrap"),
-  keywordLibrary: document.getElementById("keywordLibrary"),
-  fileInput: document.getElementById("fileInput"),
-  uploadBox: document.getElementById("uploadBox"),
-  sourceList: document.getElementById("sourceList"),
-  btnAnalyzeTop: document.getElementById("btnAnalyzeTop"),
-  btnAnalyzeSide: document.getElementById("btnAnalyzeSide"),
-  btnRefresh: document.getElementById("btnRefresh"),
-  btnExportCsv: document.getElementById("btnExportCsv"),
-  btnExportJson: document.getElementById("btnExportJson"),
-  btnExportMarkdown: document.getElementById("btnExportMarkdown"),
-  btnKeywordToggle: document.getElementById("btnKeywordToggle"),
-  btnApplyKeywords: document.getElementById("btnApplyKeywords"),
-  btnClear: document.getElementById("btnClear"),
-  btnLoadSample: document.getElementById("btnLoadSample")
-};
-
-// PASTE THE PATCH HERE
-function escapeHtml(str) {
-  ...
-}
-
-function normalize(text) {
-  ...
-}
-
-function parseEml(rawText, sourceName = "email.eml") {
-  ...
-}
 
       function setStatus(message, type) {
         if (!message) {
@@ -1636,6 +1590,57 @@ function parseEml(rawText, sourceName = "email.eml") {
         }
         el.statusBox.className = "status " + (type === "error" ? "error" : "ok");
         el.statusBox.textContent = message;
+      }
+
+      function escapeHtml(str) {
+        return String(str)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      function normalize(text) {
+        return String(text || "")
+          .replace(/\r/g, "\n")
+          .replace(/[ \t]+/g, " ")
+          .replace(/\n{3,}/g, "\n\n")
+          .trim();
+      }
+
+      function stripHtml(text) {
+        const div = document.createElement("div");
+        div.innerHTML = String(text || "");
+        return normalize(div.textContent || div.innerText || "");
+      }
+
+      function decodeHtmlEntities(text) {
+        const textarea = document.createElement("textarea");
+        textarea.innerHTML = String(text || "");
+        return textarea.value;
+      }
+
+      function cleanEmailText(text) {
+        let t = String(text || "");
+        t = decodeHtmlEntities(t);
+        t = t.replace(/<style[\s\S]*?<\/style>/gi, "\n");
+        t = t.replace(/<script[\s\S]*?<\/script>/gi, "\n");
+        t = t.replace(/<br\s*\/?>/gi, "\n");
+        t = t.replace(/<\/p>/gi, "\n");
+        t = t.replace(/<\/div>/gi, "\n");
+        t = t.replace(/<\/tr>/gi, "\n");
+        t = t.replace(/<\/table>/gi, "\n");
+        t = t.replace(/<\/td>/gi, " ");
+        t = stripHtml(t);
+
+        t = t
+          .split("\n")
+          .map(line => line.trim())
+          .filter(line => line && !GOOGLE_NOISE_PATTERNS.some(p => p.test(line)))
+          .join("\n");
+
+        return normalize(t);
       }
 
       function escapeRegExp(s) {
@@ -1663,6 +1668,313 @@ function parseEml(rawText, sourceName = "email.eml") {
         const clean = String(text || "").replace(/\s+/g, " ").trim();
         if (clean.length <= n) return clean;
         return clean.slice(0, n).replace(/\s+\S*$/, "") + "...";
+      }
+
+      function decodeMimeWords(str) {
+        return String(str || "").replace(/=\?([^?]+)\?([bBqQ])\?([^?]+)\?=/g, (_, charset, enc, data) => {
+          try {
+            if (/^b$/i.test(enc)) {
+              const binary = atob(data.replace(/\s/g, ""));
+              const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+              return decodeBytes(bytes, charset);
+            } else {
+              let qp = data.replace(/_/g, " ");
+              qp = qp.replace(/=([A-Fa-f0-9]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+              const bytes = Uint8Array.from(qp.split("").map(c => c.charCodeAt(0)));
+              return decodeBytes(bytes, charset);
+            }
+          } catch {
+            return data;
+          }
+        });
+      }
+
+      function normalizeCharset(charset) {
+        const cs = String(charset || "").toLowerCase().trim();
+        if (!cs) return "utf-8";
+        if (cs === "utf8") return "utf-8";
+        if (cs === "us-ascii") return "utf-8";
+        if (cs === "latin1") return "iso-8859-1";
+        return cs;
+      }
+
+      function decodeBytes(bytes, charset = "utf-8") {
+        try {
+          return new TextDecoder(normalizeCharset(charset), { fatal: false }).decode(bytes);
+        } catch {
+          try {
+            return new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+          } catch {
+            return Array.from(bytes).map(b => String.fromCharCode(b)).join("");
+          }
+        }
+      }
+
+      function base64ToBytes(input) {
+        const clean = String(input || "").replace(/\s+/g, "");
+        const binary = atob(clean);
+        return Uint8Array.from(binary, c => c.charCodeAt(0));
+      }
+
+      function quotedPrintableToBytes(input) {
+        let str = String(input || "").replace(/=\r?\n/g, "");
+        const out = [];
+        for (let i = 0; i < str.length; i++) {
+          if (str[i] === "=" && /[A-Fa-f0-9]{2}/.test(str.slice(i + 1, i + 3))) {
+            out.push(parseInt(str.slice(i + 1, i + 3), 16));
+            i += 2;
+          } else {
+            out.push(str.charCodeAt(i));
+          }
+        }
+        return Uint8Array.from(out);
+      }
+
+      function decodeBodyByEncoding(bodyText, encoding, charset) {
+        const enc = String(encoding || "").toLowerCase();
+        try {
+          if (enc.includes("base64")) {
+            return decodeBytes(base64ToBytes(bodyText), charset);
+          }
+          if (enc.includes("quoted-printable")) {
+            return decodeBytes(quotedPrintableToBytes(bodyText), charset);
+          }
+          const rawBytes = Uint8Array.from(String(bodyText || "").split("").map(c => c.charCodeAt(0)));
+          return decodeBytes(rawBytes, charset);
+        } catch {
+          return String(bodyText || "");
+        }
+      }
+
+      function splitHeaderBody(raw) {
+        const match = String(raw || "").match(/\r?\n\r?\n/);
+        if (!match) return { headerText: raw, bodyText: "" };
+        const idx = match.index;
+        return {
+          headerText: raw.slice(0, idx),
+          bodyText: raw.slice(idx + match[0].length)
+        };
+      }
+
+      function unfoldHeaderLines(headerText) {
+        return String(headerText || "").replace(/\r?\n([ \t]+)/g, " ");
+      }
+
+      function parseHeaders(headerText) {
+        const lines = unfoldHeaderLines(headerText).split(/\r?\n/);
+        const headers = {};
+        for (const line of lines) {
+          const idx = line.indexOf(":");
+          if (idx === -1) continue;
+          const name = line.slice(0, idx).trim().toLowerCase();
+          const value = line.slice(idx + 1).trim();
+          headers[name] = value;
+        }
+        return headers;
+      }
+
+      function parseHeaderParams(headerValue) {
+        const raw = String(headerValue || "");
+        const segments = raw.split(";").map(x => x.trim());
+        const main = (segments[0] || "").toLowerCase();
+        const params = {};
+
+        for (let i = 1; i < segments.length; i++) {
+          const idx = segments[i].indexOf("=");
+          if (idx === -1) continue;
+          const key = segments[i].slice(0, idx).trim().toLowerCase();
+          let val = segments[i].slice(idx + 1).trim();
+          val = val.replace(/^"(.*)"$/, "$1");
+          params[key] = val;
+        }
+
+        return { main, params };
+      }
+
+      function getFilenameFromHeaders(headers) {
+        const disp = parseHeaderParams(headers["content-disposition"] || "");
+        const type = parseHeaderParams(headers["content-type"] || "");
+
+        return decodeMimeWords(
+          disp.params["filename*"] ||
+          disp.params["filename"] ||
+          type.params["name*"] ||
+          type.params["name"] ||
+          ""
+        );
+      }
+
+      function splitMultipart(bodyText, boundary) {
+        const marker = "--" + boundary;
+        const endMarker = marker + "--";
+        const lines = String(bodyText || "").split(/\r?\n/);
+        const parts = [];
+        let current = [];
+        let inside = false;
+
+        for (const line of lines) {
+          if (line === marker) {
+            if (inside && current.length) {
+              parts.push(current.join("\n"));
+              current = [];
+            }
+            inside = true;
+            continue;
+          }
+          if (line === endMarker) {
+            if (inside && current.length) {
+              parts.push(current.join("\n"));
+            }
+            break;
+          }
+          if (inside) current.push(line);
+        }
+        return parts;
+      }
+
+      function parseMimeEntity(raw) {
+        const { headerText, bodyText } = splitHeaderBody(raw);
+        const headers = parseHeaders(headerText);
+        const subject = decodeMimeWords(headers["subject"] || "");
+        const from = decodeMimeWords(headers["from"] || "");
+        const date = headers["date"] || "";
+        const contentType = parseHeaderParams(headers["content-type"] || "text/plain");
+        const encoding = headers["content-transfer-encoding"] || "";
+        const charset = contentType.params.charset || "utf-8";
+        const filename = getFilenameFromHeaders(headers);
+
+        const result = {
+          headers,
+          subject,
+          from,
+          date,
+          plainParts: [],
+          htmlParts: [],
+          attachments: []
+        };
+
+        if (contentType.main === "message/rfc822") {
+          const nested = parseMimeEntity(bodyText);
+          result.plainParts.push(...nested.plainParts);
+          result.htmlParts.push(...nested.htmlParts);
+          result.attachments.push(...nested.attachments);
+          return result;
+        }
+
+        if (contentType.main.startsWith("multipart/")) {
+          const boundary = contentType.params.boundary;
+          if (!boundary) return result;
+          const parts = splitMultipart(bodyText, boundary);
+          parts.forEach(part => {
+            const child = parseMimeEntity(part);
+            result.plainParts.push(...child.plainParts);
+            result.htmlParts.push(...child.htmlParts);
+            result.attachments.push(...child.attachments);
+          });
+          return result;
+        }
+
+        const decoded = decodeBodyByEncoding(bodyText, encoding, charset);
+        const mime = contentType.main || "text/plain";
+
+        const isAttachment =
+          !!filename ||
+          /attachment/i.test(headers["content-disposition"] || "");
+
+        if (isAttachment) {
+          const ext = (filename || "").toLowerCase();
+          const att = {
+            filename: filename || "attachment",
+            mimeType: mime,
+            text: ""
+          };
+
+          if (
+            mime.includes("text/plain") ||
+            mime.includes("text/html") ||
+            ext.endsWith(".txt") ||
+            ext.endsWith(".md") ||
+            ext.endsWith(".log") ||
+            ext.endsWith(".csv")
+          ) {
+            att.text = mime.includes("text/html") ? cleanEmailText(decoded) : normalize(decoded);
+          } else if (ext.endsWith(".eml") || mime === "message/rfc822") {
+            const nested = parseMimeEntity(decoded);
+            att.text = cleanEmailText(
+              nested.plainParts.join("\n\n") || nested.htmlParts.join("\n\n")
+            );
+          } else {
+            att.text = "";
+          }
+
+          result.attachments.push(att);
+          return result;
+        }
+
+        if (mime.includes("text/plain")) {
+          result.plainParts.push(normalize(decoded));
+          return result;
+        }
+
+        if (mime.includes("text/html")) {
+          result.htmlParts.push(cleanEmailText(decoded));
+          return result;
+        }
+
+        if (decoded && decoded.trim() && mime.startsWith("text/")) {
+          result.plainParts.push(normalize(decoded));
+        }
+
+        return result;
+      }
+
+      function parseEml(rawText, sourceName = "email.eml") {
+        const parsed = parseMimeEntity(rawText);
+
+        const subject = parsed.subject || sourceName || "Untitled email";
+        const from = parsed.from || "EML message";
+        const date = parsed.date || "";
+
+        const body = cleanEmailText(
+          parsed.plainParts.join("\n\n") || parsed.htmlParts.join("\n\n")
+        );
+
+        const chunks = [];
+
+        if (body) {
+          chunks.push({
+            sourceType: "eml-body",
+            sourceName,
+            title: subject,
+            source: from,
+            metaDate: date,
+            text: body,
+            url: ""
+          });
+        }
+
+        parsed.attachments.forEach(att => {
+          if (att.text && att.text.trim()) {
+            chunks.push({
+              sourceType: "eml-attachment",
+              sourceName: att.filename,
+              title: att.filename + " (" + subject + ")",
+              source: "EML attachment",
+              metaDate: date,
+              text: att.text.trim(),
+              url: ""
+            });
+          }
+        });
+
+        return {
+          subject,
+          from,
+          date,
+          body,
+          attachments: parsed.attachments,
+          chunks
+        };
       }
 
       function detectEntities(text, watchlistText) {
@@ -1981,6 +2293,14 @@ function parseEml(rawText, sourceName = "email.eml") {
         });
       }
 
+      function badgeClass(priorityValue) {
+        if (priorityValue === "High") return "priority-high";
+        if (priorityValue === "Medium") return "priority-medium";
+        if (priorityValue === "Low") return "priority-low";
+        if (priorityValue === "Positive / Monitor") return "priority-positive";
+        return "badge-neutral";
+      }
+
       function renderResults(results) {
         el.shownCount.textContent = String(results.length);
         el.parsedCount.textContent = String(parsedChunkCount);
@@ -2026,7 +2346,7 @@ function parseEml(rawText, sourceName = "email.eml") {
               '<div class="chips">' + chips + '</div>' +
               '<div class="links">' +
                 urlLink +
-                ' <button data-raw-toggle="' + r.id + '">' + (expandedRawId === r.id ? 'Hide raw text' : 'Show raw text') + '</button>' +
+                ' <button data-raw-toggle="' + r.id + '">' + (expandedRawId === r.id ? "Hide raw text" : "Show raw text") + '</button>' +
               '</div>' +
               rawBlock +
             '</div>';
@@ -2077,14 +2397,6 @@ function parseEml(rawText, sourceName = "email.eml") {
             '</div>'
           );
         }).join("");
-      }
-
-      function badgeClass(priorityValue) {
-        if (priorityValue === "High") return "priority-high";
-        if (priorityValue === "Medium") return "priority-medium";
-        if (priorityValue === "Low") return "priority-low";
-        if (priorityValue === "Positive / Monitor") return "priority-positive";
-        return "badge-neutral";
       }
 
       function getAllInputChunks() {
