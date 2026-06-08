@@ -8,6 +8,7 @@
   <!-- External libraries -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="https://unpkg.com/mammoth/mammoth.browser.min.js"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 
   <style>
     :root{
@@ -395,6 +396,27 @@
       text-align: center;
     }
 
+    .gmail-controls {
+      border: 1px solid var(--line);
+      background: #f9fbf9;
+      border-radius: 16px;
+      padding: 12px;
+      margin-bottom: 14px;
+    }
+
+    .gmail-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .gmail-user {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 8px;
+    }
+
     @media (max-width: 1100px) {
       .layout {
         grid-template-columns: 1fr;
@@ -471,6 +493,29 @@
       <div class="panel">
         <h2>Inputs</h2>
 
+        <div class="gmail-controls">
+          <label style="font-weight:700; font-size:14px;">Gmail Import</label>
+          <div class="small">Sign in, search Gmail, and import email bodies + supported attachments for analysis.</div>
+
+          <div class="field" style="margin-top:10px;">
+            <label for="gmailQuery">Gmail search query</label>
+            <input id="gmailQuery" type="text" value='(from:googlealerts-noreply@google.com OR subject:"Google Alert") newer_than:30d' />
+          </div>
+
+          <div class="field">
+            <label for="gmailMaxResults">Max messages</label>
+            <input id="gmailMaxResults" type="number" min="1" max="100" value="15" />
+          </div>
+
+          <div class="gmail-actions">
+            <button class="btn" id="btnGmailSignIn">Connect Gmail</button>
+            <button class="btn secondary" id="btnGmailFetch">Fetch Gmail Files</button>
+            <button class="btn secondary" id="btnGmailSignOut">Sign Out</button>
+          </div>
+
+          <div class="gmail-user" id="gmailUserStatus">Not connected.</div>
+        </div>
+
         <div class="field">
           <label>Upload files</label>
           <div class="upload-box">
@@ -536,7 +581,7 @@
         </div>
 
         <div id="results" class="result-list">
-          <div class="empty">Upload or paste alert text, then click Analyze.</div>
+          <div class="empty">Upload files, fetch Gmail messages, or paste alert text, then click Analyze.</div>
         </div>
       </div>
     </div>
@@ -545,9 +590,6 @@
   </div>
 
   <script>
-    // -----------------------------
-    // Safe initialization
-    // -----------------------------
     window.addEventListener("load", function () {
       try {
         initApp();
@@ -567,9 +609,9 @@
           "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
       }
 
-      // -----------------------------
-      // Data
-      // -----------------------------
+      const GOOGLE_CLIENT_ID = "YOUR_GOOGLE_CLIENT_ID_HERE";
+      const GMAIL_SCOPES = "https://www.googleapis.com/auth/gmail.readonly";
+
       const PRIORITY_RANK = {
         "High": 4,
         "Medium": 3,
@@ -706,10 +748,11 @@
       let lastResults = [];
       let parsedChunkCount = 0;
       let expandedRawId = null;
+      let localTextChunks = [];
+      let gmailChunks = [];
+      let accessToken = null;
+      let tokenClient = null;
 
-      // -----------------------------
-      // Elements
-      // -----------------------------
       const el = {
         statusBox: document.getElementById("statusBox"),
         alertText: document.getElementById("alertText"),
@@ -738,12 +781,15 @@
         btnKeywordToggle: document.getElementById("btnKeywordToggle"),
         btnApplyKeywords: document.getElementById("btnApplyKeywords"),
         btnClear: document.getElementById("btnClear"),
-        btnLoadSample: document.getElementById("btnLoadSample")
+        btnLoadSample: document.getElementById("btnLoadSample"),
+        gmailQuery: document.getElementById("gmailQuery"),
+        gmailMaxResults: document.getElementById("gmailMaxResults"),
+        btnGmailSignIn: document.getElementById("btnGmailSignIn"),
+        btnGmailFetch: document.getElementById("btnGmailFetch"),
+        btnGmailSignOut: document.getElementById("btnGmailSignOut"),
+        gmailUserStatus: document.getElementById("gmailUserStatus")
       };
 
-      // -----------------------------
-      // Helpers
-      // -----------------------------
       function setStatus(message, type) {
         if (!message) {
           el.statusBox.className = "status";
@@ -759,12 +805,12 @@
           .replace(/&/g, "&amp;")
           .replace(/</g, "&lt;")
           .replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;");
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
       }
 
       function normalize(text) {
         return String(text || "")
-          .replace(/&amp;/g, "&")
           .replace(/\r/g, "\n")
           .replace(/[ \t]+/g, " ")
           .replace(/\n{3,}/g, "\n\n")
@@ -772,35 +818,31 @@
       }
 
       function stripHtml(text) {
-        return String(text || "")
-          .replace(/<style[\s\S]*?<\/style>/gi, "\n")
-          .replace(/<script[\s\S]*?<\/script>/gi, "\n")
-          .replace(/<br\s*\/?>/gi, "\n")
-          .replace(/<\/p>/gi, "\n")
-          .replace(/<\/div>/gi, "\n")
-          .replace(/<\/tr>/gi, "\n")
-          .replace(/<\/table>/gi, "\n")
-          .replace(/<\/td>/gi, " ")
-          .replace(/<[^>]+>/g, " ")
-          .replace(/&nbsp;/gi, " ")
-          .replace(/&amp;/gi, "&")
-          .replace(/&quot;/gi, '"')
-          .replace(/&#39;/gi, "'")
-          .replace(/\n{3,}/g, "\n\n")
-          .replace(/[ \t]+/g, " ")
-          .trim();
+        const div = document.createElement("div");
+        div.innerHTML = String(text || "");
+        return normalize(div.textContent || div.innerText || "");
       }
 
       function cleanEmailText(text) {
         let t = String(text || "");
         t = t.replace(/=\r?\n/g, "");
         t = t.replace(/=3D/g, "=");
+        t = t.replace(/<style[\s\S]*?<\/style>/gi, "\n");
+        t = t.replace(/<script[\s\S]*?<\/script>/gi, "\n");
+        t = t.replace(/<br\s*\/?>/gi, "\n");
+        t = t.replace(/<\/p>/gi, "\n");
+        t = t.replace(/<\/div>/gi, "\n");
+        t = t.replace(/<\/tr>/gi, "\n");
+        t = t.replace(/<\/table>/gi, "\n");
+        t = t.replace(/<\/td>/gi, " ");
         t = stripHtml(t);
+
         t = t
           .split("\n")
           .map(line => line.trim())
           .filter(line => line && !GOOGLE_NOISE_PATTERNS.some(p => p.test(line)))
           .join("\n");
+
         return normalize(t);
       }
 
@@ -814,7 +856,7 @@
       }
 
       function extractUrls(text) {
-        return text.match(/https?:\/\/[^\s)\]}>\"']+/g) || [];
+        return String(text || "").match(/https?:\/\/[^\s)\]}"']+/g) || [];
       }
 
       function domainFromUrl(url) {
@@ -832,7 +874,7 @@
       }
 
       function detectEntities(text, watchlistText) {
-        const lower = text.toLowerCase();
+        const lower = String(text || "").toLowerCase();
         const entities = [];
 
         String(watchlistText || "")
@@ -856,18 +898,38 @@
         ];
 
         patterns.forEach(p => {
-          const matches = text.match(p) || [];
+          const matches = String(text || "").match(p) || [];
           matches.forEach(x => entities.push(x.trim().replace(/[.,;:]$/, "")));
         });
 
         return Array.from(new Set(entities.map(x => x.trim())));
       }
 
-      function extractGoogleAlertArticles(rawText) {
+      function extractDocumentRecords(chunks) {
+        const docs = [];
+
+        chunks.forEach((chunk, idx) => {
+          const rawText = cleanEmailText(chunk.text || "");
+          if (!rawText) return;
+
+          docs.push({
+            kind: "document",
+            title: chunk.title || chunk.sourceName || ("Document " + (idx + 1)),
+            source: chunk.source || chunk.sourceName || "Imported source",
+            snippet: excerpt(rawText, 700),
+            url: chunk.url || "",
+            raw: rawText,
+            rawMeta: chunk
+          });
+        });
+
+        return docs;
+      }
+
+      function extractGoogleAlertArticles(rawText, fallbackMeta = {}) {
         const text = cleanEmailText(rawText);
         const articles = [];
 
-        // Pattern 1: markdown-style [Title](URL)
         const linkRegex = /\[([^\]]+?)\]\((https?:\/\/[^\s)]+)\)/g;
         const matches = Array.from(text.matchAll(linkRegex));
 
@@ -884,20 +946,21 @@
             const between = text.slice(start, end).trim();
 
             const lines = between.split("\n").map(x => x.trim()).filter(Boolean);
-            const source = lines[0] || "";
+            const source = lines[0] || fallbackMeta.source || "";
             const snippet = lines.slice(1).join(" ").trim();
 
             articles.push({
+              kind: "article",
               title: title.replace(/\s+-\s+(Facebook|Twitter)\s*$/i, "").trim(),
               source,
               snippet,
               url,
-              raw: [title, source, snippet, url].filter(Boolean).join("\n")
+              raw: [title, source, snippet, url].filter(Boolean).join("\n"),
+              rawMeta: fallbackMeta
             });
           }
         }
 
-        // Pattern 2: plain text blocks / URL lines
         if (!articles.length) {
           const blocks = text.split(/\n\s*\n/).map(x => x.trim()).filter(x => x.length > 50);
 
@@ -906,41 +969,77 @@
             if (!urls.length) return;
 
             const lines = block.split("\n").map(x => x.trim()).filter(Boolean);
-            const title = lines[0] || "";
-            const source = lines[1] || "";
+            const title = lines[0] || fallbackMeta.title || "";
+            const source = lines[1] || fallbackMeta.source || "";
             const snippet = lines.slice(2).join(" ");
 
             articles.push({
-              title,
+              kind: "article",
+              title: title || "Untitled article",
               source,
               snippet,
               url: urls[0],
-              raw: block
+              raw: block,
+              rawMeta: fallbackMeta
             });
           });
         }
 
-        return articles.filter(a => a.title && a.url);
+        return articles.filter(a => a.title && (a.url || a.raw));
+      }
+
+      function buildAnalysisItems(allChunks) {
+        const items = [];
+
+        allChunks.forEach(chunk => {
+          const foundArticles = extractGoogleAlertArticles(chunk.text || "", {
+            source: chunk.source || "",
+            title: chunk.title || "",
+            url: chunk.url || "",
+            sourceName: chunk.sourceName || ""
+          });
+
+          if (foundArticles.length) {
+            items.push(...foundArticles);
+          } else {
+            const rawText = cleanEmailText(chunk.text || "");
+            if (rawText) {
+              items.push({
+                kind: "document",
+                title: chunk.title || chunk.sourceName || "Imported document",
+                source: chunk.source || chunk.sourceName || "Imported source",
+                snippet: excerpt(rawText, 700),
+                url: chunk.url || "",
+                raw: rawText,
+                rawMeta: chunk
+              });
+            }
+          }
+        });
+
+        return items;
       }
 
       function isLowValueArticle(article) {
-        const combined = [article.title, article.source, article.snippet].join(" ").toLowerCase();
+        const combined = [article.title, article.source, article.snippet, article.raw].join(" ").toLowerCase();
 
         if (GOOGLE_NOISE_PATTERNS.some(p => p.test(combined))) return true;
         if (LOW_VALUE_PATTERNS.some(p => p.test(combined))) return true;
 
-        if (SOURCE_NOISE_PATTERNS.some(p => p.test(article.source)) || SOURCE_NOISE_PATTERNS.some(p => p.test(article.url))) {
-          const hasRealCreditSignal =
-            /(lawsuit|investigation|fraud|subpoena|default|bankruptcy|liquidity|downgrade|layoffs|closure|asset sale|divestiture|acquisition|debt|refinancing|credit facility|ftc|doj|sec)/i
-              .test(combined);
-          if (!hasRealCreditSignal) return true;
+        if (article.kind === "article") {
+          if (SOURCE_NOISE_PATTERNS.some(p => p.test(article.source)) || SOURCE_NOISE_PATTERNS.some(p => p.test(article.url))) {
+            const hasRealCreditSignal =
+              /(lawsuit|investigation|fraud|subpoena|default|bankruptcy|liquidity|downgrade|layoffs|closure|asset sale|divestiture|acquisition|debt|refinancing|credit facility|ftc|doj|sec)/i
+                .test(combined);
+            if (!hasRealCreditSignal) return true;
+          }
         }
 
         return false;
       }
 
       function scoreArticle(article, watchlistText) {
-        const text = [article.title, article.source, article.snippet].join(" ");
+        const text = [article.title, article.source, article.snippet, article.raw].join(" ");
         let score = 0;
         const categories = [];
         const matches = {};
@@ -983,8 +1082,8 @@
           "Legal & Regulatory Issues"
         ];
 
-        if (categories.indexOf("Bankruptcy & Insolvency") !== -1) return "High";
-        if (categories.some(c => severe.indexOf(c) !== -1) && score >= 12) return "High";
+        if (categories.includes("Bankruptcy & Insolvency")) return "High";
+        if (categories.some(c => severe.includes(c)) && score >= 12) return "High";
         if (score >= 16) return "High";
         if (score >= 9) return "Medium";
         if (score >= 4) return "Low";
@@ -993,13 +1092,13 @@
       }
 
       function riskReason(row) {
-        if (row.categories.indexOf("Bankruptcy & Insolvency") !== -1) return "Bankruptcy or insolvency language detected.";
-        if (row.categories.indexOf("Credit Deterioration & Default") !== -1) return "Default, downgrade, covenant, liquidity, or payment stress detected.";
-        if (row.categories.indexOf("Legal & Regulatory Issues") !== -1) return "Legal, FTC/DOJ/SEC, compliance, or investigation risk detected.";
-        if (row.categories.indexOf("Corporate Actions") !== -1) return "Asset sale, divestiture, acquisition, or strategic transaction detected.";
-        if (row.categories.indexOf("Financing & Debt Activity") !== -1) return "Debt, refinancing, credit agreement, or funding activity detected.";
-        if (row.categories.indexOf("Operational Risk Indicators") !== -1) return "Operational disruption, closures, layoffs, or cyber risk detected.";
-        if (row.categories.indexOf("Positive Credit Signals") !== -1) return "Possible positive credit signal.";
+        if (row.categories.includes("Bankruptcy & Insolvency")) return "Bankruptcy or insolvency language detected.";
+        if (row.categories.includes("Credit Deterioration & Default")) return "Default, downgrade, covenant, liquidity, or payment stress detected.";
+        if (row.categories.includes("Legal & Regulatory Issues")) return "Legal, FTC/DOJ/SEC, compliance, or investigation risk detected.";
+        if (row.categories.includes("Corporate Actions")) return "Asset sale, divestiture, acquisition, or strategic transaction detected.";
+        if (row.categories.includes("Financing & Debt Activity")) return "Debt, refinancing, credit agreement, or funding activity detected.";
+        if (row.categories.includes("Operational Risk Indicators")) return "Operational disruption, closures, layoffs, or cyber risk detected.";
+        if (row.categories.includes("Positive Credit Signals")) return "Possible positive credit signal.";
         return "Potentially relevant for credit review.";
       }
 
@@ -1017,7 +1116,7 @@
           .split(/\s+/)
           .filter(Boolean)
           .filter(t => t.length > 2)
-          .filter(t => ["the","and","for","with","from","into","over","here","are","all","this","that","has","have","will","its","inc","news","group"].indexOf(t) === -1);
+          .filter(t => !["the","and","for","with","from","into","over","here","are","all","this","that","has","have","will","its","inc","news","group"].includes(t));
       }
 
       function articleEventKey(row) {
@@ -1026,12 +1125,13 @@
 
         const importantTokens = [];
         const mustKeep = ["group1","lithiauk","jlr","ftc","deceptive","pricing","lawsuit","investigation","sell","acquire","dealer","site","asset","divestiture","regulatory"];
+
         mustKeep.forEach(t => {
-          if (tokens.indexOf(t) !== -1) importantTokens.push(t);
+          if (tokens.includes(t)) importantTokens.push(t);
         });
 
         tokens.forEach(t => {
-          if (importantTokens.indexOf(t) === -1 && importantTokens.length < 6) importantTokens.push(t);
+          if (!importantTokens.includes(t) && importantTokens.length < 6) importantTokens.push(t);
         });
 
         return importantTokens.slice(0, 6).sort().join("|");
@@ -1041,7 +1141,7 @@
         const groups = {};
 
         rows.forEach(row => {
-          const key = articleEventKey(row);
+          const key = articleEventKey(row) || (row.title + "|" + row.domain + "|" + row.priority);
           if (!groups[key]) {
             groups[key] = {
               id: row.id,
@@ -1057,7 +1157,9 @@
               domain: row.domain,
               excerpt: row.excerpt,
               raw: row.raw,
-              sourceCount: 1
+              sourceCount: 1,
+              sourceType: row.sourceType,
+              origin: row.origin
             };
           } else {
             const g = groups[key];
@@ -1088,36 +1190,60 @@
         });
       }
 
-      function analyze(rawText, watchlistText, minPriority, categoryFilter, query, sortBy) {
-        const articles = extractGoogleAlertArticles(rawText);
-        parsedChunkCount = articles.length;
+      function getAllInputChunks() {
+        const chunks = [];
 
-        const rows = articles
-          .filter(article => !isLowValueArticle(article))
-          .map((article, idx) => {
-            const scored = scoreArticle(article, watchlistText);
+        const pasted = normalize(el.alertText.value);
+        if (pasted) {
+          chunks.push({
+            sourceType: "pasted",
+            sourceName: "Pasted text",
+            title: "Pasted alert text",
+            source: "Manual input",
+            text: pasted,
+            url: ""
+          });
+        }
+
+        localTextChunks.forEach(x => chunks.push(x));
+        gmailChunks.forEach(x => chunks.push(x));
+
+        return chunks;
+      }
+
+      function analyzeAllInputs(watchlistText, minPriority, categoryFilter, query, sortBy) {
+        const inputChunks = getAllInputChunks();
+        const items = buildAnalysisItems(inputChunks);
+        parsedChunkCount = items.length;
+
+        const rows = items
+          .filter(item => !isLowValueArticle(item))
+          .map((item, idx) => {
+            const scored = scoreArticle(item, watchlistText);
             const pri = priority(scored.score, scored.categories);
 
             return {
               id: idx + 1,
               priority: pri,
               score: scored.score,
-              title: article.title,
+              title: item.title,
               entities: scored.entities,
               categories: scored.categories,
               matches: scored.matches,
               sourceLabel: scored.sourceLabel,
               reason: riskReason({ categories: scored.categories }),
-              url: article.url || "",
-              domain: article.url ? domainFromUrl(article.url) : "",
-              excerpt: article.snippet || excerpt(article.raw, 350),
-              raw: article.raw
+              url: item.url || "",
+              domain: item.url ? domainFromUrl(item.url) : "",
+              excerpt: item.snippet || excerpt(item.raw, 350),
+              raw: item.raw,
+              sourceType: item.rawMeta?.sourceType || item.kind,
+              origin: item.rawMeta?.sourceName || item.source || "Imported source"
             };
           });
 
         let deduped = dedupeGrouped(rows)
           .filter(x => PRIORITY_RANK[x.priority] >= PRIORITY_RANK[minPriority])
-          .filter(x => categoryFilter === "All categories" || x.categories.indexOf(categoryFilter) !== -1);
+          .filter(x => categoryFilter === "All categories" || x.categories.includes(categoryFilter));
 
         const q = String(query || "").toLowerCase().trim();
         if (q) {
@@ -1125,8 +1251,8 @@
             [
               r.title, r.excerpt, r.priority, r.reason,
               r.categories.join(" "), r.entities.join(" "),
-              r.domain, JSON.stringify(r.matches)
-            ].join(" ").toLowerCase().indexOf(q) !== -1
+              r.domain, JSON.stringify(r.matches), r.sourceType, r.origin
+            ].join(" ").toLowerCase().includes(q)
           );
         }
 
@@ -1141,11 +1267,11 @@
         return deduped;
       }
 
-      function badgeClass(priority) {
-        if (priority === "High") return "priority-high";
-        if (priority === "Medium") return "priority-medium";
-        if (priority === "Low") return "priority-low";
-        if (priority === "Positive / Monitor") return "priority-positive";
+      function badgeClass(priorityValue) {
+        if (priorityValue === "High") return "priority-high";
+        if (priorityValue === "Medium") return "priority-medium";
+        if (priorityValue === "Low") return "priority-low";
+        if (priorityValue === "Positive / Monitor") return "priority-positive";
         return "badge-neutral";
       }
 
@@ -1180,6 +1306,7 @@
                 '<span class="badge badge-neutral">Score ' + r.score + '</span>' +
                 '<span class="badge badge-neutral">' + escapeHtml(r.sourceLabel) + '</span>' +
                 (r.domain ? '<span class="badge badge-neutral">' + escapeHtml(r.domain) + '</span>' : '') +
+                (r.sourceType ? '<span class="badge badge-neutral">' + escapeHtml(r.sourceType) + '</span>' : '') +
               '</div>' +
               '<div class="title">' + escapeHtml(r.title) + '</div>' +
               '<div class="reason">' + escapeHtml(r.reason) + '</div>' +
@@ -1187,6 +1314,8 @@
               '<div class="meta">' +
                 '<div><strong>Entities:</strong> ' + (r.entities.length ? escapeHtml(r.entities.join(", ")) : "None") + '</div>' +
                 '<div><strong>Categories:</strong> ' + (r.categories.length ? escapeHtml(r.categories.join(", ")) : "None") + '</div>' +
+                '<div><strong>Origin:</strong> ' + escapeHtml(r.origin || "Unknown") + '</div>' +
+                '<div><strong>Source type:</strong> ' + escapeHtml(r.sourceType || "Unknown") + '</div>' +
               '</div>' +
               '<div class="chips">' + chips + '</div>' +
               '<div class="links">' +
@@ -1197,7 +1326,6 @@
             '</div>';
         }).join("");
 
-        // attach toggle buttons after rendering
         Array.from(el.results.querySelectorAll("[data-raw-toggle]")).forEach(btn => {
           btn.addEventListener("click", function () {
             const id = Number(this.getAttribute("data-raw-toggle"));
@@ -1228,8 +1356,7 @@
       function runAnalysis() {
         try {
           setStatus("", "");
-          lastResults = analyze(
-            el.alertText.value,
+          lastResults = analyzeAllInputs(
             el.watchlistText.value,
             el.minPriority.value,
             el.categoryFilter.value,
@@ -1239,7 +1366,7 @@
           updateSummary(lastResults);
           renderResults(lastResults);
           setStatus(
-            "Parsed " + parsedChunkCount + " article block(s). Kept " + lastResults.length + " credit-relevant item(s).",
+            "Parsed " + parsedChunkCount + " item(s). Kept " + lastResults.length + " credit-relevant result(s).",
             "ok"
           );
         } catch (err) {
@@ -1276,7 +1403,7 @@
       }
 
       function downloadFile(filename, content, type) {
-        const blob = new Blob([content], { type: type });
+        const blob = new Blob([content], { type });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
@@ -1290,7 +1417,7 @@
       function toCsv(rows) {
         const headers = [
           "priority","score","reason","title","entities","categories",
-          "matched_keywords","source_quality","url","source_domain","excerpt"
+          "matched_keywords","source_quality","origin","source_type","url","source_domain","excerpt"
         ];
 
         function esc(value) {
@@ -1306,6 +1433,8 @@
           r.categories.join("; "),
           JSON.stringify(r.matches),
           r.sourceLabel,
+          r.origin,
+          r.sourceType,
           r.url,
           r.domain,
           r.excerpt
@@ -1339,6 +1468,8 @@ Reason: ${r.reason}
 Entities: ${r.entities.join(", ") || "None"}
 Categories: ${r.categories.join(", ") || "None"}
 Source Quality: ${r.sourceLabel}
+Origin: ${r.origin || "Unknown"}
+Source Type: ${r.sourceType || "Unknown"}
 Source: ${r.domain || "Unknown"}
 URL: ${r.url || "N/A"}
 
@@ -1385,6 +1516,8 @@ ${r.excerpt}
         expandedRawId = null;
         lastResults = [];
         parsedChunkCount = 0;
+        localTextChunks = [];
+        gmailChunks = [];
         setStatus("", "");
         updateSummary([]);
         renderResults([]);
@@ -1425,7 +1558,9 @@ Summary table and competitor comparison data including Group 1 Automotive.
 
       function populateCategoryFilter() {
         const categories = ["All categories"].concat(Object.keys(KEYWORD_LIBRARY));
-        el.categoryFilter.innerHTML = categories.map(c => '<option value="' + escapeHtml(c) + '">' + escapeHtml(c) + '</option>').join("");
+        el.categoryFilter.innerHTML = categories
+          .map(c => '<option value="' + escapeHtml(c) + '">' + escapeHtml(c) + '</option>')
+          .join("");
         el.categoryFilter.value = "All categories";
       }
 
@@ -1452,8 +1587,23 @@ Summary table and competitor comparison data including Group 1 Automotive.
 
       async function extractTextFromDocx(arrayBuffer) {
         if (!window.mammoth) throw new Error("DOCX parser not loaded.");
-        const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
+        const result = await mammoth.extractRawText({ arrayBuffer });
         return String(result.value || "").trim();
+      }
+
+      async function parseArrayBufferByName(filename, arrayBuffer) {
+        const name = String(filename || "").toLowerCase();
+
+        if (name.endsWith(".pdf")) {
+          return await extractTextFromPdf(arrayBuffer);
+        }
+
+        if (name.endsWith(".docx")) {
+          return await extractTextFromDocx(arrayBuffer);
+        }
+
+        const decoder = new TextDecoder("utf-8", { fatal: false });
+        return decoder.decode(arrayBuffer);
       }
 
       async function parseUploadedFile(file) {
@@ -1498,7 +1648,14 @@ Summary table and competitor comparison data including Group 1 Automotive.
           try {
             const text = await parseUploadedFile(file);
             if (text && text.trim()) {
-              chunks.push(text.trim());
+              chunks.push({
+                sourceType: "local-file",
+                sourceName: file.name,
+                title: file.name,
+                source: "Local upload",
+                text: text.trim(),
+                url: ""
+              });
             } else {
               errors.push(file.name + ": no readable text found.");
             }
@@ -1508,9 +1665,7 @@ Summary table and competitor comparison data including Group 1 Automotive.
           }
         }
 
-        const current = el.alertText.value;
-        const combined = [current].concat(chunks).filter(Boolean).join("\n\n");
-        el.alertText.value = combined;
+        localTextChunks = localTextChunks.concat(chunks);
 
         if (errors.length && chunks.length) {
           setStatus("Loaded " + chunks.length + " file(s). Some files had issues: " + errors.join(" | "), "error");
@@ -1521,9 +1676,244 @@ Summary table and competitor comparison data including Group 1 Automotive.
         }
       }
 
-      // -----------------------------
-      // Bind buttons explicitly
-      // -----------------------------
+      function base64UrlToUint8Array(base64Url) {
+        const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+        const padding = "=".repeat((4 - (base64.length % 4)) % 4);
+        const binary = atob(base64 + padding);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        return bytes;
+      }
+
+      function base64UrlToString(base64Url) {
+        const bytes = base64UrlToUint8Array(base64Url);
+        return new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+      }
+
+      async function gmailApi(path) {
+        if (!accessToken) throw new Error("Gmail is not connected.");
+        const response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/" + path, {
+          headers: {
+            Authorization: "Bearer " + accessToken
+          }
+        });
+
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error("Gmail API error: " + response.status + " " + text);
+        }
+
+        return await response.json();
+      }
+
+      function getHeader(headers, name) {
+        const found = (headers || []).find(h => String(h.name || "").toLowerCase() === String(name).toLowerCase());
+        return found ? found.value : "";
+      }
+
+      function walkParts(parts, callback) {
+        (parts || []).forEach(part => {
+          callback(part);
+          if (part.parts && part.parts.length) {
+            walkParts(part.parts, callback);
+          }
+        });
+      }
+
+      async function fetchAttachment(messageId, attachmentId) {
+        const data = await gmailApi("messages/" + messageId + "/attachments/" + attachmentId);
+        return base64UrlToUint8Array(data.data);
+      }
+
+      async function parseGmailMessage(messageId) {
+        const msg = await gmailApi("messages/" + messageId + "?format=full");
+        const payload = msg.payload || {};
+        const headers = payload.headers || [];
+        const subject = getHeader(headers, "Subject") || "Untitled email";
+        const from = getHeader(headers, "From") || "";
+        const date = getHeader(headers, "Date") || "";
+        const parts = [];
+        if (payload.parts && payload.parts.length) {
+          parts.push(...payload.parts);
+        } else {
+          parts.push(payload);
+        }
+
+        let plainText = "";
+        let htmlText = "";
+        const attachmentChunks = [];
+
+        walkParts(parts, part => {
+          const mimeType = part.mimeType || "";
+          const filename = part.filename || "";
+          const body = part.body || {};
+
+          if (mimeType === "text/plain" && body.data) {
+            plainText += "\n" + base64UrlToString(body.data);
+          } else if (mimeType === "text/html" && body.data) {
+            htmlText += "\n" + base64UrlToString(body.data);
+          }
+        });
+
+        walkParts(parts, async () => {});
+
+        const fileParts = [];
+        walkParts(parts, part => {
+          const filename = part.filename || "";
+          const body = part.body || {};
+          if (filename && body.attachmentId) {
+            fileParts.push(part);
+          }
+        });
+
+        for (const part of fileParts) {
+          const filename = part.filename || "attachment";
+          const lower = filename.toLowerCase();
+
+          if (!(/\.(txt|csv|md|log|pdf|docx|eml)$/i.test(lower))) {
+            continue;
+          }
+
+          try {
+            const bytes = await fetchAttachment(messageId, part.body.attachmentId);
+            let text = "";
+
+            if (lower.endsWith(".eml")) {
+              text = cleanEmailText(new TextDecoder("utf-8", { fatal: false }).decode(bytes));
+            } else {
+              text = await parseArrayBufferByName(filename, bytes.buffer);
+            }
+
+            if (text && text.trim()) {
+              attachmentChunks.push({
+                sourceType: "gmail-attachment",
+                sourceName: filename,
+                title: filename + " (" + subject + ")",
+                source: "Gmail attachment",
+                text: text.trim(),
+                url: "",
+                parentSubject: subject,
+                from,
+                date
+              });
+            }
+          } catch (err) {
+            console.error("Attachment parse failed:", filename, err);
+          }
+        }
+
+        const bodyText = cleanEmailText(plainText || htmlText || "");
+        const bodyChunk = bodyText
+          ? {
+              sourceType: "gmail-message",
+              sourceName: subject,
+              title: subject,
+              source: from || "Gmail message",
+              text: bodyText,
+              url: "",
+              from,
+              date
+            }
+          : null;
+
+        return {
+          bodyChunk,
+          attachmentChunks
+        };
+      }
+
+      function ensureGoogleIdentityReady() {
+        if (!window.google || !google.accounts || !google.accounts.oauth2) {
+          throw new Error("Google Identity Services is not loaded yet.");
+        }
+      }
+
+      function initGoogleAuth() {
+        ensureGoogleIdentityReady();
+
+        tokenClient = google.accounts.oauth2.initTokenClient({
+          client_id: GOOGLE_CLIENT_ID,
+          scope: GMAIL_SCOPES,
+          callback: (response) => {
+            if (response.error) {
+              console.error(response);
+              setStatus("Google sign-in failed.", "error");
+              return;
+            }
+            accessToken = response.access_token;
+            el.gmailUserStatus.textContent = "Gmail connected.";
+            setStatus("Connected to Gmail.", "ok");
+          }
+        });
+      }
+
+      function signInToGmail() {
+        try {
+          if (GOOGLE_CLIENT_ID === "YOUR_GOOGLE_CLIENT_ID_HERE") {
+            throw new Error("Add your Google OAuth Client ID first.");
+          }
+          if (!tokenClient) {
+            initGoogleAuth();
+          }
+          tokenClient.requestAccessToken({ prompt: "consent" });
+        } catch (err) {
+          console.error(err);
+          setStatus("Gmail sign-in failed: " + err.message, "error");
+        }
+      }
+
+      function signOutFromGmail() {
+        accessToken = null;
+        el.gmailUserStatus.textContent = "Not connected.";
+        setStatus("Signed out of Gmail.", "ok");
+      }
+
+      async function fetchFromGmail() {
+        try {
+          if (!accessToken) {
+            throw new Error("Connect Gmail first.");
+          }
+
+          const q = el.gmailQuery.value.trim();
+          const maxResults = Math.max(1, Math.min(100, Number(el.gmailMaxResults.value || 15)));
+
+          setStatus("Searching Gmail...", "ok");
+
+          const list = await gmailApi("messages?q=" + encodeURIComponent(q) + "&maxResults=" + maxResults);
+          const messages = list.messages || [];
+
+          if (!messages.length) {
+            gmailChunks = [];
+            setStatus("No Gmail messages matched your query.", "ok");
+            return;
+          }
+
+          const imported = [];
+          let attachmentCount = 0;
+
+          for (const message of messages) {
+            const parsed = await parseGmailMessage(message.id);
+            if (parsed.bodyChunk) imported.push(parsed.bodyChunk);
+            if (parsed.attachmentChunks.length) {
+              imported.push(...parsed.attachmentChunks);
+              attachmentCount += parsed.attachmentChunks.length;
+            }
+          }
+
+          gmailChunks = imported;
+
+          setStatus(
+            "Imported " + messages.length + " Gmail message(s) and " + attachmentCount + " supported attachment(s).",
+            "ok"
+          );
+        } catch (err) {
+          console.error(err);
+          setStatus("Gmail fetch failed: " + err.message, "error");
+        }
+      }
+
       el.btnAnalyzeTop.addEventListener("click", runAnalysis);
       el.btnAnalyzeSide.addEventListener("click", runAnalysis);
       el.btnRefresh.addEventListener("click", runAnalysis);
@@ -1541,9 +1931,10 @@ Summary table and competitor comparison data including Group 1 Automotive.
       el.minPriority.addEventListener("change", runAnalysis);
       el.categoryFilter.addEventListener("change", runAnalysis);
 
-      // -----------------------------
-      // Startup UI
-      // -----------------------------
+      el.btnGmailSignIn.addEventListener("click", signInToGmail);
+      el.btnGmailFetch.addEventListener("click", fetchFromGmail);
+      el.btnGmailSignOut.addEventListener("click", signOutFromGmail);
+
       populateCategoryFilter();
       fillKeywordLibrary();
       updateSummary([]);
