@@ -8,7 +8,6 @@
   <!-- External libraries -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="https://unpkg.com/mammoth/mammoth.browser.min.js"></script>
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
 
   <style>
     :root{
@@ -33,6 +32,7 @@
       --error-text:#9f1239;
       --ok-bg:#eefdf3;
       --ok-text:#166534;
+      --drop-bg:#eef7f2;
     }
 
     * { box-sizing: border-box; }
@@ -189,6 +189,12 @@
       text-align: center;
       background: #edf5f1;
       color: var(--text);
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+
+    .upload-box.dragover {
+      background: var(--drop-bg);
+      border-color: var(--primary);
     }
 
     .small {
@@ -396,25 +402,35 @@
       text-align: center;
     }
 
-    .gmail-controls {
+    .source-list {
       border: 1px solid var(--line);
-      background: #f9fbf9;
+      background: #fbfdfb;
       border-radius: 16px;
       padding: 12px;
       margin-bottom: 14px;
+      max-height: 220px;
+      overflow: auto;
     }
 
-    .gmail-actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 8px;
+    .source-item {
+      padding: 10px 12px;
+      border: 1px solid #e8eeea;
+      border-radius: 12px;
+      background: white;
+      margin-bottom: 8px;
     }
 
-    .gmail-user {
-      font-size: 12px;
+    .source-item:last-child { margin-bottom: 0; }
+
+    .source-title {
+      font-weight: 700;
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+
+    .source-meta {
       color: var(--muted);
-      margin-top: 8px;
+      font-size: 12px;
     }
 
     @media (max-width: 1100px) {
@@ -493,40 +509,25 @@
       <div class="panel">
         <h2>Inputs</h2>
 
-        <div class="gmail-controls">
-          <label style="font-weight:700; font-size:14px;">Gmail Import</label>
-          <div class="small">Sign in, search Gmail, and import email bodies + supported attachments for analysis.</div>
-
-          <div class="field" style="margin-top:10px;">
-            <label for="gmailQuery">Gmail search query</label>
-            <input id="gmailQuery" type="text" value='(from:googlealerts-noreply@google.com OR subject:"Google Alert") newer_than:30d' />
-          </div>
-
-          <div class="field">
-            <label for="gmailMaxResults">Max messages</label>
-            <input id="gmailMaxResults" type="number" min="1" max="100" value="15" />
-          </div>
-
-          <div class="gmail-actions">
-            <button class="btn" id="btnGmailSignIn">Connect Gmail</button>
-            <button class="btn secondary" id="btnGmailFetch">Fetch Gmail Files</button>
-            <button class="btn secondary" id="btnGmailSignOut">Sign Out</button>
-          </div>
-
-          <div class="gmail-user" id="gmailUserStatus">Not connected.</div>
-        </div>
-
         <div class="field">
           <label>Upload files</label>
-          <div class="upload-box">
+          <div class="upload-box" id="uploadBox">
             <input type="file" id="fileInput" multiple accept=".txt,.eml,.md,.log,.csv,.pdf,.docx" />
+            <div class="small">You can also drag and drop files into this box.</div>
           </div>
-          <div class="small">.txt, .eml, .md, .log, .csv, .pdf, .docx</div>
+          <div class="small">Recommended: upload saved Gmail .eml files. Also supports .txt, .md, .log, .csv, .pdf, .docx</div>
         </div>
 
         <div class="field">
-          <label for="alertText">Alert text</label>
-          <textarea id="alertText" placeholder="Paste Gmail or Google Alert text here"></textarea>
+          <label>Imported sources</label>
+          <div id="sourceList" class="source-list">
+            <div class="small">No files imported yet.</div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="alertText">Optional pasted alert text</label>
+          <textarea id="alertText" placeholder="Optional: paste email or article text here"></textarea>
         </div>
 
         <div class="field">
@@ -581,7 +582,7 @@
         </div>
 
         <div id="results" class="result-list">
-          <div class="empty">Upload files, fetch Gmail messages, or paste alert text, then click Analyze.</div>
+          <div class="empty">Upload saved .eml files (or paste text), then click Analyze.</div>
         </div>
       </div>
     </div>
@@ -608,9 +609,6 @@
         pdfjsLib.GlobalWorkerOptions.workerSrc =
           "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
       }
-
-      const GOOGLE_CLIENT_ID = "YOUR_GOOGLE_CLIENT_ID_HERE";
-      const GMAIL_SCOPES = "https://www.googleapis.com/auth/gmail.readonly";
 
       const PRIORITY_RANK = {
         "High": 4,
@@ -748,10 +746,7 @@
       let lastResults = [];
       let parsedChunkCount = 0;
       let expandedRawId = null;
-      let localTextChunks = [];
-      let gmailChunks = [];
-      let accessToken = null;
-      let tokenClient = null;
+      let importedChunks = [];
 
       const el = {
         statusBox: document.getElementById("statusBox"),
@@ -772,6 +767,8 @@
         keywordLibraryWrap: document.getElementById("keywordLibraryWrap"),
         keywordLibrary: document.getElementById("keywordLibrary"),
         fileInput: document.getElementById("fileInput"),
+        uploadBox: document.getElementById("uploadBox"),
+        sourceList: document.getElementById("sourceList"),
         btnAnalyzeTop: document.getElementById("btnAnalyzeTop"),
         btnAnalyzeSide: document.getElementById("btnAnalyzeSide"),
         btnRefresh: document.getElementById("btnRefresh"),
@@ -781,13 +778,7 @@
         btnKeywordToggle: document.getElementById("btnKeywordToggle"),
         btnApplyKeywords: document.getElementById("btnApplyKeywords"),
         btnClear: document.getElementById("btnClear"),
-        btnLoadSample: document.getElementById("btnLoadSample"),
-        gmailQuery: document.getElementById("gmailQuery"),
-        gmailMaxResults: document.getElementById("gmailMaxResults"),
-        btnGmailSignIn: document.getElementById("btnGmailSignIn"),
-        btnGmailFetch: document.getElementById("btnGmailFetch"),
-        btnGmailSignOut: document.getElementById("btnGmailSignOut"),
-        gmailUserStatus: document.getElementById("gmailUserStatus")
+        btnLoadSample: document.getElementById("btnLoadSample")
       };
 
       function setStatus(message, type) {
@@ -809,6 +800,12 @@
           .replace(/'/g, "&#39;");
       }
 
+      function decodeHtmlEntities(text) {
+        const textarea = document.createElement("textarea");
+        textarea.innerHTML = text;
+        return textarea.value;
+      }
+
       function normalize(text) {
         return String(text || "")
           .replace(/\r/g, "\n")
@@ -823,10 +820,34 @@
         return normalize(div.textContent || div.innerText || "");
       }
 
+      function decodeQuotedPrintable(input) {
+        let str = String(input || "");
+        str = str.replace(/=\r?\n/g, "");
+        str = str.replace(/=([A-Fa-f0-9]{2})/g, (_, hex) => {
+          return String.fromCharCode(parseInt(hex, 16));
+        });
+        try {
+          const bytes = Uint8Array.from(str.split("").map(c => c.charCodeAt(0)));
+          return new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+        } catch {
+          return str;
+        }
+      }
+
+      function decodeBase64Text(input) {
+        const compact = String(input || "").replace(/\s+/g, "");
+        try {
+          const binary = atob(compact);
+          const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+          return new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+        } catch {
+          return input;
+        }
+      }
+
       function cleanEmailText(text) {
         let t = String(text || "");
-        t = t.replace(/=\r?\n/g, "");
-        t = t.replace(/=3D/g, "=");
+        t = decodeHtmlEntities(t);
         t = t.replace(/<style[\s\S]*?<\/style>/gi, "\n");
         t = t.replace(/<script[\s\S]*?<\/script>/gi, "\n");
         t = t.replace(/<br\s*\/?>/gi, "\n");
@@ -844,6 +865,186 @@
           .join("\n");
 
         return normalize(t);
+      }
+
+      function splitHeaderBody(raw) {
+        const match = raw.match(/\r?\n\r?\n/);
+        if (!match) {
+          return { headerText: raw, bodyText: "" };
+        }
+        const idx = match.index;
+        return {
+          headerText: raw.slice(0, idx),
+          bodyText: raw.slice(idx + match[0].length)
+        };
+      }
+
+      function parseHeaders(headerText) {
+        const headers = {};
+        const lines = String(headerText || "").split(/\r?\n/);
+        let current = null;
+
+        for (const line of lines) {
+          if (/^\s/.test(line) && current) {
+            headers[current] += " " + line.trim();
+            continue;
+          }
+          const idx = line.indexOf(":");
+          if (idx === -1) continue;
+          current = line.slice(0, idx).trim().toLowerCase();
+          headers[current] = line.slice(idx + 1).trim();
+        }
+        return headers;
+      }
+
+      function parseContentType(contentType) {
+        const raw = String(contentType || "");
+        const parts = raw.split(";").map(x => x.trim());
+        const mimeType = (parts[0] || "text/plain").toLowerCase();
+        const params = {};
+
+        for (let i = 1; i < parts.length; i++) {
+          const eq = parts[i].indexOf("=");
+          if (eq === -1) continue;
+          const key = parts[i].slice(0, eq).trim().toLowerCase();
+          let value = parts[i].slice(eq + 1).trim();
+          value = value.replace(/^"(.*)"$/, "$1");
+          params[key] = value;
+        }
+
+        return { mimeType, params };
+      }
+
+      function splitMultipartBody(bodyText, boundary) {
+        const marker = "--" + boundary;
+        const endMarker = marker + "--";
+        const lines = String(bodyText || "").split(/\r?\n/);
+        const parts = [];
+        let current = [];
+        let within = false;
+
+        for (const line of lines) {
+          if (line === marker) {
+            if (within && current.length) {
+              parts.push(current.join("\n"));
+              current = [];
+            }
+            within = true;
+            continue;
+          }
+          if (line === endMarker) {
+            if (within && current.length) {
+              parts.push(current.join("\n"));
+            }
+            break;
+          }
+          if (within) {
+            current.push(line);
+          }
+        }
+        return parts;
+      }
+
+      function decodePartBody(bodyText, encoding) {
+        const enc = String(encoding || "").toLowerCase();
+        if (enc.includes("quoted-printable")) {
+          return decodeQuotedPrintable(bodyText);
+        }
+        if (enc.includes("base64")) {
+          return decodeBase64Text(bodyText);
+        }
+        return bodyText;
+      }
+
+      function parseEmlRecursive(rawPart, depth = 0) {
+        const { headerText, bodyText } = splitHeaderBody(rawPart);
+        const headers = parseHeaders(headerText);
+        const contentType = parseContentType(headers["content-type"]);
+        const encoding = headers["content-transfer-encoding"] || "";
+        const disposition = headers["content-disposition"] || "";
+        const filenameMatch = disposition.match(/filename="?([^";]+)"?/i) || (headers["content-type"] || "").match(/name="?([^";]+)"?/i);
+        const filename = filenameMatch ? filenameMatch[1] : "";
+
+        const result = {
+          plain: "",
+          html: "",
+          attachments: []
+        };
+
+        if (contentType.mimeType.startsWith("multipart/")) {
+          const boundary = contentType.params.boundary;
+          if (!boundary) return result;
+          const parts = splitMultipartBody(bodyText, boundary);
+          for (const part of parts) {
+            const child = parseEmlRecursive(part, depth + 1);
+            if (child.plain) result.plain += "\n" + child.plain;
+            if (child.html) result.html += "\n" + child.html;
+            if (child.attachments.length) result.attachments.push(...child.attachments);
+          }
+          return result;
+        }
+
+        const decoded = decodePartBody(bodyText, encoding);
+        const mime = contentType.mimeType;
+
+        if (filename) {
+          result.attachments.push({
+            filename,
+            mimeType: mime,
+            text: mime.includes("text/html") ? cleanEmailText(decoded) : normalize(decoded)
+          });
+          return result;
+        }
+
+        if (mime.includes("text/plain")) {
+          result.plain = normalize(decoded);
+          return result;
+        }
+
+        if (mime.includes("text/html")) {
+          result.html = cleanEmailText(decoded);
+          return result;
+        }
+
+        return result;
+      }
+
+      function parseEml(text) {
+        const { headerText, bodyText } = splitHeaderBody(text);
+        const headers = parseHeaders(headerText);
+
+        let plain = "";
+        let html = "";
+        let attachments = [];
+
+        const rootType = parseContentType(headers["content-type"]);
+        const rootEncoding = headers["content-transfer-encoding"] || "";
+
+        if (rootType.mimeType.startsWith("multipart/")) {
+          const recursive = parseEmlRecursive(text);
+          plain = recursive.plain;
+          html = recursive.html;
+          attachments = recursive.attachments;
+        } else {
+          const decoded = decodePartBody(bodyText, rootEncoding);
+          if (rootType.mimeType.includes("text/html")) {
+            html = cleanEmailText(decoded);
+          } else {
+            plain = normalize(decoded);
+          }
+        }
+
+        const body = cleanEmailText(plain || html || bodyText || "");
+
+        return {
+          subject: headers["subject"] || "Untitled email",
+          from: headers["from"] || "",
+          to: headers["to"] || "",
+          date: headers["date"] || "",
+          body,
+          attachments,
+          headers
+        };
       }
 
       function escapeRegExp(s) {
@@ -905,27 +1106,6 @@
         return Array.from(new Set(entities.map(x => x.trim())));
       }
 
-      function extractDocumentRecords(chunks) {
-        const docs = [];
-
-        chunks.forEach((chunk, idx) => {
-          const rawText = cleanEmailText(chunk.text || "");
-          if (!rawText) return;
-
-          docs.push({
-            kind: "document",
-            title: chunk.title || chunk.sourceName || ("Document " + (idx + 1)),
-            source: chunk.source || chunk.sourceName || "Imported source",
-            snippet: excerpt(rawText, 700),
-            url: chunk.url || "",
-            raw: rawText,
-            rawMeta: chunk
-          });
-        });
-
-        return docs;
-      }
-
       function extractGoogleAlertArticles(rawText, fallbackMeta = {}) {
         const text = cleanEmailText(rawText);
         const articles = [];
@@ -969,13 +1149,13 @@
             if (!urls.length) return;
 
             const lines = block.split("\n").map(x => x.trim()).filter(Boolean);
-            const title = lines[0] || fallbackMeta.title || "";
+            const title = lines[0] || fallbackMeta.title || "Untitled article";
             const source = lines[1] || fallbackMeta.source || "";
             const snippet = lines.slice(2).join(" ");
 
             articles.push({
               kind: "article",
-              title: title || "Untitled article",
+              title,
               source,
               snippet,
               url: urls[0],
@@ -988,32 +1168,44 @@
         return articles.filter(a => a.title && (a.url || a.raw));
       }
 
-      function buildAnalysisItems(allChunks) {
+      function looksLikeGoogleAlertText(text) {
+        const t = String(text || "");
+        return /\[([^\]]+?)\]\((https?:\/\/[^\s)]+)\)/.test(t) ||
+               /(google alert|see more results|manage your alerts)/i.test(t) ||
+               (extractUrls(t).length >= 2);
+      }
+
+      function buildAnalysisItems(chunks) {
         const items = [];
 
-        allChunks.forEach(chunk => {
-          const foundArticles = extractGoogleAlertArticles(chunk.text || "", {
-            source: chunk.source || "",
-            title: chunk.title || "",
-            url: chunk.url || "",
-            sourceName: chunk.sourceName || ""
-          });
+        chunks.forEach(chunk => {
+          const text = chunk.text || "";
 
-          if (foundArticles.length) {
-            items.push(...foundArticles);
-          } else {
-            const rawText = cleanEmailText(chunk.text || "");
-            if (rawText) {
-              items.push({
-                kind: "document",
-                title: chunk.title || chunk.sourceName || "Imported document",
-                source: chunk.source || chunk.sourceName || "Imported source",
-                snippet: excerpt(rawText, 700),
-                url: chunk.url || "",
-                raw: rawText,
-                rawMeta: chunk
-              });
+          if (looksLikeGoogleAlertText(text)) {
+            const found = extractGoogleAlertArticles(text, {
+              source: chunk.source || "",
+              title: chunk.title || "",
+              url: chunk.url || "",
+              sourceName: chunk.sourceName || ""
+            });
+
+            if (found.length) {
+              items.push(...found);
+              return;
             }
+          }
+
+          const cleaned = cleanEmailText(text);
+          if (cleaned) {
+            items.push({
+              kind: "document",
+              title: chunk.title || chunk.sourceName || "Imported document",
+              source: chunk.source || chunk.sourceName || "Imported source",
+              snippet: excerpt(cleaned, 700),
+              url: chunk.url || "",
+              raw: cleaned,
+              rawMeta: chunk
+            });
           }
         });
 
@@ -1205,9 +1397,7 @@
           });
         }
 
-        localTextChunks.forEach(x => chunks.push(x));
-        gmailChunks.forEach(x => chunks.push(x));
-
+        importedChunks.forEach(x => chunks.push(x));
         return chunks;
       }
 
@@ -1351,6 +1541,26 @@
         el.countMedium.textContent = String(counts["Medium"]);
         el.countLow.textContent = String(counts["Low"]);
         el.countPositive.textContent = String(counts["Positive / Monitor"]);
+      }
+
+      function renderSourceList() {
+        if (!importedChunks.length) {
+          el.sourceList.innerHTML = '<div class="small">No files imported yet.</div>';
+          return;
+        }
+
+        el.sourceList.innerHTML = importedChunks.map((chunk, idx) => {
+          return (
+            '<div class="source-item">' +
+              '<div class="source-title">' + escapeHtml(chunk.title || chunk.sourceName || ("Imported " + (idx + 1))) + '</div>' +
+              '<div class="source-meta">' +
+                escapeHtml(chunk.sourceType || "file") +
+                (chunk.source ? ' • ' + escapeHtml(chunk.source) : '') +
+                (chunk.metaDate ? ' • ' + escapeHtml(chunk.metaDate) : '') +
+              '</div>' +
+            '</div>'
+          );
+        }).join("");
       }
 
       function runAnalysis() {
@@ -1516,11 +1726,11 @@ ${r.excerpt}
         expandedRawId = null;
         lastResults = [];
         parsedChunkCount = 0;
-        localTextChunks = [];
-        gmailChunks = [];
+        importedChunks = [];
         setStatus("", "");
         updateSummary([]);
         renderResults([]);
+        renderSourceList();
         el.shownCount.textContent = "0";
         el.parsedCount.textContent = "0";
       }
@@ -1547,6 +1757,10 @@ Lithia UK has acquired three Jaguar Land Rover dealerships from Group 1 Automoti
 [ here are all 97 car dealers the ftc threatened over deceptive pricing - the drive ](https://www.thedrive.com/example3)
 The Drive
 Group 1 Automotive appears in a list of dealers the FTC threatened over deceptive pricing.
+
+[ sample medical system faces liquidity pressures after weak volumes ](https://www.example.com/example5)
+Sample Wire
+Sample Health System reported declining cash flow, liquidity concerns, and reduced guidance following weak volumes.
 
 [ o'reilly automotive compare against competitors - investing.com ](https://www.investing.com/example4)
 Investing.com
@@ -1591,72 +1805,112 @@ Summary table and competitor comparison data including Group 1 Automotive.
         return String(result.value || "").trim();
       }
 
-      async function parseArrayBufferByName(filename, arrayBuffer) {
-        const name = String(filename || "").toLowerCase();
-
-        if (name.endsWith(".pdf")) {
-          return await extractTextFromPdf(arrayBuffer);
-        }
-
-        if (name.endsWith(".docx")) {
-          return await extractTextFromDocx(arrayBuffer);
-        }
-
-        const decoder = new TextDecoder("utf-8", { fatal: false });
-        return decoder.decode(arrayBuffer);
-      }
-
       async function parseUploadedFile(file) {
         const name = file.name.toLowerCase();
 
-        if (file.size > 15 * 1024 * 1024) {
-          throw new Error(file.name + " is larger than 15MB.");
+        if (file.size > 20 * 1024 * 1024) {
+          throw new Error(file.name + " is larger than 20MB.");
         }
 
         if (name.endsWith(".txt") || name.endsWith(".md") || name.endsWith(".log") || name.endsWith(".csv")) {
-          return await file.text();
+          return {
+            chunks: [{
+              sourceType: "local-file",
+              sourceName: file.name,
+              title: file.name,
+              source: "Local upload",
+              text: await file.text(),
+              url: ""
+            }]
+          };
         }
 
         if (name.endsWith(".eml")) {
-          const text = await file.text();
-          return cleanEmailText(text);
+          const raw = await file.text();
+          const parsed = parseEml(raw);
+
+          const chunks = [{
+            sourceType: "eml-body",
+            sourceName: file.name,
+            title: parsed.subject || file.name,
+            source: parsed.from || "EML message",
+            text: parsed.body,
+            url: "",
+            metaDate: parsed.date || ""
+          }];
+
+          parsed.attachments.forEach(att => {
+            if (att.text && att.text.trim()) {
+              chunks.push({
+                sourceType: "eml-attachment",
+                sourceName: att.filename,
+                title: att.filename + " (" + (parsed.subject || file.name) + ")",
+                source: "EML attachment",
+                text: att.text,
+                url: "",
+                metaDate: parsed.date || ""
+              });
+            }
+          });
+
+          return { chunks };
         }
 
         if (name.endsWith(".pdf")) {
           const buffer = await file.arrayBuffer();
-          return await extractTextFromPdf(buffer);
+          const text = await extractTextFromPdf(buffer);
+          return {
+            chunks: [{
+              sourceType: "local-file",
+              sourceName: file.name,
+              title: file.name,
+              source: "Local upload",
+              text,
+              url: ""
+            }]
+          };
         }
 
         if (name.endsWith(".docx")) {
           const buffer = await file.arrayBuffer();
-          return await extractTextFromDocx(buffer);
+          const text = await extractTextFromDocx(buffer);
+          return {
+            chunks: [{
+              sourceType: "local-file",
+              sourceName: file.name,
+              title: file.name,
+              source: "Local upload",
+              text,
+              url: ""
+            }]
+          };
         }
 
         throw new Error("Unsupported file type: " + file.name);
       }
 
-      async function handleFileUpload(event) {
-        const files = Array.from(event.target.files || []);
-        if (!files.length) return;
+      async function importFiles(files) {
+        const list = Array.from(files || []);
+        if (!list.length) return;
 
         setStatus("Reading files...", "ok");
 
-        const chunks = [];
+        const newChunks = [];
         const errors = [];
 
-        for (const file of files) {
+        for (const file of list) {
           try {
-            const text = await parseUploadedFile(file);
-            if (text && text.trim()) {
-              chunks.push({
-                sourceType: "local-file",
-                sourceName: file.name,
-                title: file.name,
-                source: "Local upload",
-                text: text.trim(),
-                url: ""
-              });
-            } else {
+            const parsed = await parseUploadedFile(file);
+            parsed.chunks.forEach(chunk => {
+              if (chunk.text && chunk.text.trim()) {
+                newChunks.push({
+                  ...chunk,
+                  text: chunk.text.trim()
+                });
+              }
+            });
+
+            if (!parsed.chunks.length) {
               errors.push(file.name + ": no readable text found.");
             }
           } catch (err) {
@@ -1665,253 +1919,45 @@ Summary table and competitor comparison data including Group 1 Automotive.
           }
         }
 
-        localTextChunks = localTextChunks.concat(chunks);
+        importedChunks = importedChunks.concat(newChunks);
+        renderSourceList();
 
-        if (errors.length && chunks.length) {
-          setStatus("Loaded " + chunks.length + " file(s). Some files had issues: " + errors.join(" | "), "error");
+        if (errors.length && newChunks.length) {
+          setStatus("Loaded " + newChunks.length + " chunk(s). Some files had issues: " + errors.join(" | "), "error");
         } else if (errors.length) {
           setStatus(errors.join(" | "), "error");
         } else {
-          setStatus("Loaded " + chunks.length + " file(s).", "ok");
+          setStatus("Loaded " + newChunks.length + " chunk(s).", "ok");
         }
+
+        runAnalysis();
       }
 
-      function base64UrlToUint8Array(base64Url) {
-        const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-        const padding = "=".repeat((4 - (base64.length % 4)) % 4);
-        const binary = atob(base64 + padding);
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) {
-          bytes[i] = binary.charCodeAt(i);
-        }
-        return bytes;
+      function handleFileUpload(event) {
+        importFiles(event.target.files);
       }
 
-      function base64UrlToString(base64Url) {
-        const bytes = base64UrlToUint8Array(base64Url);
-        return new TextDecoder("utf-8", { fatal: false }).decode(bytes);
-      }
-
-      async function gmailApi(path) {
-        if (!accessToken) throw new Error("Gmail is not connected.");
-        const response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/" + path, {
-          headers: {
-            Authorization: "Bearer " + accessToken
-          }
+      function setupDragDrop() {
+        ["dragenter", "dragover"].forEach(eventName => {
+          el.uploadBox.addEventListener(eventName, e => {
+            e.preventDefault();
+            e.stopPropagation();
+            el.uploadBox.classList.add("dragover");
+          });
         });
 
-        if (!response.ok) {
-          const text = await response.text();
-          throw new Error("Gmail API error: " + response.status + " " + text);
-        }
-
-        return await response.json();
-      }
-
-      function getHeader(headers, name) {
-        const found = (headers || []).find(h => String(h.name || "").toLowerCase() === String(name).toLowerCase());
-        return found ? found.value : "";
-      }
-
-      function walkParts(parts, callback) {
-        (parts || []).forEach(part => {
-          callback(part);
-          if (part.parts && part.parts.length) {
-            walkParts(part.parts, callback);
-          }
-        });
-      }
-
-      async function fetchAttachment(messageId, attachmentId) {
-        const data = await gmailApi("messages/" + messageId + "/attachments/" + attachmentId);
-        return base64UrlToUint8Array(data.data);
-      }
-
-      async function parseGmailMessage(messageId) {
-        const msg = await gmailApi("messages/" + messageId + "?format=full");
-        const payload = msg.payload || {};
-        const headers = payload.headers || [];
-        const subject = getHeader(headers, "Subject") || "Untitled email";
-        const from = getHeader(headers, "From") || "";
-        const date = getHeader(headers, "Date") || "";
-        const parts = [];
-        if (payload.parts && payload.parts.length) {
-          parts.push(...payload.parts);
-        } else {
-          parts.push(payload);
-        }
-
-        let plainText = "";
-        let htmlText = "";
-        const attachmentChunks = [];
-
-        walkParts(parts, part => {
-          const mimeType = part.mimeType || "";
-          const filename = part.filename || "";
-          const body = part.body || {};
-
-          if (mimeType === "text/plain" && body.data) {
-            plainText += "\n" + base64UrlToString(body.data);
-          } else if (mimeType === "text/html" && body.data) {
-            htmlText += "\n" + base64UrlToString(body.data);
-          }
+        ["dragleave", "drop"].forEach(eventName => {
+          el.uploadBox.addEventListener(eventName, e => {
+            e.preventDefault();
+            e.stopPropagation();
+            el.uploadBox.classList.remove("dragover");
+          });
         });
 
-        walkParts(parts, async () => {});
-
-        const fileParts = [];
-        walkParts(parts, part => {
-          const filename = part.filename || "";
-          const body = part.body || {};
-          if (filename && body.attachmentId) {
-            fileParts.push(part);
-          }
+        el.uploadBox.addEventListener("drop", e => {
+          const files = e.dataTransfer.files;
+          importFiles(files);
         });
-
-        for (const part of fileParts) {
-          const filename = part.filename || "attachment";
-          const lower = filename.toLowerCase();
-
-          if (!(/\.(txt|csv|md|log|pdf|docx|eml)$/i.test(lower))) {
-            continue;
-          }
-
-          try {
-            const bytes = await fetchAttachment(messageId, part.body.attachmentId);
-            let text = "";
-
-            if (lower.endsWith(".eml")) {
-              text = cleanEmailText(new TextDecoder("utf-8", { fatal: false }).decode(bytes));
-            } else {
-              text = await parseArrayBufferByName(filename, bytes.buffer);
-            }
-
-            if (text && text.trim()) {
-              attachmentChunks.push({
-                sourceType: "gmail-attachment",
-                sourceName: filename,
-                title: filename + " (" + subject + ")",
-                source: "Gmail attachment",
-                text: text.trim(),
-                url: "",
-                parentSubject: subject,
-                from,
-                date
-              });
-            }
-          } catch (err) {
-            console.error("Attachment parse failed:", filename, err);
-          }
-        }
-
-        const bodyText = cleanEmailText(plainText || htmlText || "");
-        const bodyChunk = bodyText
-          ? {
-              sourceType: "gmail-message",
-              sourceName: subject,
-              title: subject,
-              source: from || "Gmail message",
-              text: bodyText,
-              url: "",
-              from,
-              date
-            }
-          : null;
-
-        return {
-          bodyChunk,
-          attachmentChunks
-        };
-      }
-
-      function ensureGoogleIdentityReady() {
-        if (!window.google || !google.accounts || !google.accounts.oauth2) {
-          throw new Error("Google Identity Services is not loaded yet.");
-        }
-      }
-
-      function initGoogleAuth() {
-        ensureGoogleIdentityReady();
-
-        tokenClient = google.accounts.oauth2.initTokenClient({
-          client_id: GOOGLE_CLIENT_ID,
-          scope: GMAIL_SCOPES,
-          callback: (response) => {
-            if (response.error) {
-              console.error(response);
-              setStatus("Google sign-in failed.", "error");
-              return;
-            }
-            accessToken = response.access_token;
-            el.gmailUserStatus.textContent = "Gmail connected.";
-            setStatus("Connected to Gmail.", "ok");
-          }
-        });
-      }
-
-      function signInToGmail() {
-        try {
-          if (GOOGLE_CLIENT_ID === "YOUR_GOOGLE_CLIENT_ID_HERE") {
-            throw new Error("Add your Google OAuth Client ID first.");
-          }
-          if (!tokenClient) {
-            initGoogleAuth();
-          }
-          tokenClient.requestAccessToken({ prompt: "consent" });
-        } catch (err) {
-          console.error(err);
-          setStatus("Gmail sign-in failed: " + err.message, "error");
-        }
-      }
-
-      function signOutFromGmail() {
-        accessToken = null;
-        el.gmailUserStatus.textContent = "Not connected.";
-        setStatus("Signed out of Gmail.", "ok");
-      }
-
-      async function fetchFromGmail() {
-        try {
-          if (!accessToken) {
-            throw new Error("Connect Gmail first.");
-          }
-
-          const q = el.gmailQuery.value.trim();
-          const maxResults = Math.max(1, Math.min(100, Number(el.gmailMaxResults.value || 15)));
-
-          setStatus("Searching Gmail...", "ok");
-
-          const list = await gmailApi("messages?q=" + encodeURIComponent(q) + "&maxResults=" + maxResults);
-          const messages = list.messages || [];
-
-          if (!messages.length) {
-            gmailChunks = [];
-            setStatus("No Gmail messages matched your query.", "ok");
-            return;
-          }
-
-          const imported = [];
-          let attachmentCount = 0;
-
-          for (const message of messages) {
-            const parsed = await parseGmailMessage(message.id);
-            if (parsed.bodyChunk) imported.push(parsed.bodyChunk);
-            if (parsed.attachmentChunks.length) {
-              imported.push(...parsed.attachmentChunks);
-              attachmentCount += parsed.attachmentChunks.length;
-            }
-          }
-
-          gmailChunks = imported;
-
-          setStatus(
-            "Imported " + messages.length + " Gmail message(s) and " + attachmentCount + " supported attachment(s).",
-            "ok"
-          );
-        } catch (err) {
-          console.error(err);
-          setStatus("Gmail fetch failed: " + err.message, "error");
-        }
       }
 
       el.btnAnalyzeTop.addEventListener("click", runAnalysis);
@@ -1931,13 +1977,11 @@ Summary table and competitor comparison data including Group 1 Automotive.
       el.minPriority.addEventListener("change", runAnalysis);
       el.categoryFilter.addEventListener("change", runAnalysis);
 
-      el.btnGmailSignIn.addEventListener("click", signInToGmail);
-      el.btnGmailFetch.addEventListener("click", fetchFromGmail);
-      el.btnGmailSignOut.addEventListener("click", signOutFromGmail);
-
+      setupDragDrop();
       populateCategoryFilter();
       fillKeywordLibrary();
       updateSummary([]);
+      renderSourceList();
       setStatus("Ready.", "ok");
     }
   </script>
