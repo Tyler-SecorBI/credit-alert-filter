@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Tyler Secor Intern Project</title>
 
+  <!-- External libraries -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="https://unpkg.com/mammoth/mammoth.browser.min.js"></script>
 
@@ -514,9 +515,7 @@
             <input type="file" id="fileInput" multiple accept=".txt,.eml,.md,.log,.csv,.pdf,.docx" />
             <div class="small">You can also drag and drop files into this box.</div>
           </div>
-          <div class="small">
-            Recommended: upload saved Gmail .eml files. Also supports .txt, .md, .log, .csv, .pdf, .docx
-          </div>
+          <div class="small">Recommended: upload saved Gmail .eml files. Also supports .txt, .md, .log, .csv, .pdf, .docx</div>
         </div>
 
         <div class="field">
@@ -524,12 +523,6 @@
           <div id="sourceList" class="source-list">
             <div class="small">No files imported yet.</div>
           </div>
-        </div>
-
-        <div class="field">
-          <label for="sampleSelect">Sample set</label>
-          <select id="sampleSelect"></select>
-          <div class="small">Choose one of 10 samples, then click Load Sample.</div>
         </div>
 
         <div class="field">
@@ -596,1869 +589,1077 @@
 
     <div class="footer-note">Tyler Secor Intern Project</div>
   </div>
-<script>
-const STORAGE_KEYS = {
-  watchlist: "credit_filter_watchlist_v5",
-  keywords: "credit_filter_keywords_v5"
-};
 
-window.addEventListener("load", function () {
-  try {
-    initApp();
-  } catch (err) {
-    console.error(err);
-    const box = document.getElementById("statusBox");
-    if (box) {
-      box.className = "status error";
-      box.textContent = "Startup error: " + err.message;
-    }
-  }
-});
-
-function initApp() {
-  if (window.pdfjsLib) {
-    pdfjsLib.GlobalWorkerOptions.workerSrc =
-      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-  }
-
-  const PRIORITY_RANK = {
-    "High": 4,
-    "Medium": 3,
-    "Low": 2,
-    "Positive / Monitor": 1,
-    "Ignore": 0
-  };
-
-  const GOOGLE_NOISE_PATTERNS = [
-    /manage your alerts/i,
-    /unsubscribe/i,
-    /google alerts/i,
-    /see more results/i,
-    /edit this alert/i,
-    /you have received this email/i,
-    /rss feed/i,
-    /flag as irrelevant/i,
-    /view all your alerts/i,
-    /send feedback/i,
-    /facebook/i,
-    /twitter/i,
-    /external email/i,
-    /CAUTION:/i,
-    /do not click links/i,
-    /contact the .* help desk/i
-  ];
-
-  const SOURCE_NOISE_PATTERNS = [
-    /investing\.com/i,
-    /benzinga/i,
-    /marketscreener/i,
-    /simplywall/i
-  ];
-
-  const LOW_VALUE_PATTERNS = [
-    /people also watch/i,
-    /compare against competitors/i,
-    /summary table/i,
-    /corporate event calendar/i,
-    /price total return/i,
-    /net income to common/i,
-    /stock price/i,
-    /quote/i,
-    /consensus estimate/i,
-    /price target/i
-  ];
-
-  const SOURCE_WEIGHTS = [
-    {
-      pattern: /sec\.gov|ftc\.gov|doj\.gov|emma\.msrb\.org|moodys|fitchratings|spglobal|standardandpoors|krollbondratings|kbra|cfpb|occ\.gov|fdic\.gov|federalreserve\.gov|justice\.gov/i,
-      boost: 4,
-      label: "Primary / regulatory / rating source"
-    },
-    {
-      pattern: /reuters|bloomberg|wsj|ft\.com|apnews|prnewswire|businesswire|globenewswire|modernhealthcare|bondbuyer/i,
-      boost: 2,
-      label: "Financial/newswire source"
-    }
-  ];
-
-  function termBlock(str) {
-    return String(str || "")
-      .split("\n")
-      .map(x => x.trim())
-      .filter(Boolean)
-      .filter((v, i, arr) => arr.indexOf(v) === i);
-  }
-
-  const DEFAULT_KEYWORD_LIBRARY = {
-    "Bankruptcy & Insolvency": {
-      severity: 10,
-      terms: termBlock(`
-bankruptcy
-filed for bankruptcy
-chapter 7
-chapter 11
-chapter 13
-chapter 9
-insolvency
-insolvent
-liquidation
-receivership
-restructuring
-debt restructuring
-financial distress
-debtor-in-possession
-dip financing
-out-of-court restructuring
-reorganization
-moratorium on payments
-payment moratorium
-suspended payments
-missed interest payment
-missed principal payment
-unable to pay debts
-going concern
-going-concern warning
-substantial doubt about going concern
-asset liquidation
-distressed sale
-`)
-    },
-
-    "Credit Deterioration & Default": {
-      severity: 9,
-      terms: termBlock(`
-default
-payment default
-technical default
-event of default
-cross default
-cross-default
-missed payment
-past due
-delinquent
-loan default
-bond default
-interest payment missed
-principal payment missed
-non-payment
-payment failure
-covenant breach
-breach of covenant
-waiver request
-waiver granted
-distressed exchange
-negative outlook
-credit negative
-credit watch
-creditwatch
-watch negative
-rating downgrade
-downgrade
-credit downgrade
-review for downgrade
-liquidity pressure
-liquidity shortfall
-cash shortfall
-tight liquidity
-weak liquidity
-strained liquidity
-financial weakness
-refinancing risk
-refinancing challenge
-debt maturity wall
-unable to refinance
-revolver fully drawn
-revolver draw
-cash flow problems
-negative operating cash flow
-interest coverage pressure
-debt service pressure
-dscr decline
-leverage increase
-elevated leverage
-high leverage
-unsustainable leverage
-stressed leverage
-debt burden
-`)
-    },
-
-    "Legal & Regulatory Issues": {
-      severity: 7,
-      terms: termBlock(`
-lawsuit
-litigation
-legal action
-class action
-court ruling
-judgment
-settlement
-regulatory investigation
-investigation
-sec investigation
-ftc investigation
-doj investigation
-cfpb investigation
-attorney general investigation
-subpoena
-enforcement action
-consent order
-consent decree
-cease and desist
-injunction
-penalty
-fine
-civil penalty
-compliance issue
-compliance violation
-material weakness
-restatement
-financial restatement
-fraud allegations
-fraud
-embezzlement
-misappropriation
-bribery
-corruption
-false claims
-deceptive practices
-deceptive pricing
-anti-money laundering
-aml deficiencies
-sanctions violation
-license revoked
-license suspension
-permit revoked
-permit suspension
-medicare audit
-medicaid audit
-false claims act
-billing fraud
-stark law
-anti-kickback statute
-antitrust investigation
-data breach
-cyber breach
-privacy violation
-hipaa violation
-criminal charges
-civil charges
-indictment
-`)
-    },
-
-    "Financial Performance Warning Signs": {
-      severity: 7,
-      terms: termBlock(`
-earnings miss
-revenue decline
-profit decline
-margin compression
-operating margin decline
-ebitda decline
-negative ebitda
-net loss
-operating loss
-loss widened
-weak results
-poor results
-reduced guidance
-lowered guidance
-cut guidance
-withdraws guidance
-guidance withdrawn
-weak outlook
-soft outlook
-declining sales
-same-store sales decline
-volume decline
-lower volumes
-soft demand
-weak demand
-pricing pressure
-cost inflation
-higher input costs
-labor cost pressure
-negative free cash flow
-cash burn
-declining cash flow
-weak operating cash flow
-cash flow strain
-tight margins
-margin pressure
-occupancy decline
-payer mix deterioration
-reimbursement pressure
-bad debt expense increase
-write-down
-writeoff
-impairment
-goodwill impairment
-asset impairment
-declining profitability
-financial strain
-earnings pressure
-coverage ratio decline
-debt service coverage decline
-higher uncompensated care
-patient volume decline
-budget gap
-structural deficit
-`)
-    },
-
-    "Financing & Debt Activity": {
-      severity: 6,
-      terms: termBlock(`
-bond issuance
-debt issuance
-new debt
-term loan
-term loan b
-revolving credit facility
-credit facility
-bridge loan
-emergency funding
-lender negotiations
-capital raise
-equity issuance
-convertible debt
-private placement
-senior notes
-secured notes
-unsecured notes
-refinancing
-loan refinancing
-refinancing delay
-debt maturity extension
-maturity extension
-forbearance
-forbearance agreement
-amendment
-covenant amendment
-loan amendment
-credit agreement
-waiver
-increased borrowing
-liquidity facility
-asset-backed financing
-asset based lending
-abl facility
-factoring
-sale-leaseback
-sale leaseback
-debt repayment
-debt paydown
-debt buyback
-exchange offer
-tender offer
-capital injection
-equity support
-rights offering
-atm offering
-dividend suspension
-restricted payments
-cash preservation
-revolver drawdown
-fully drawn revolver
-debt restructuring
-interest reserve
-deferred interest
-pik interest
-noteholder negotiations
-bondholder negotiations
-`)
-    },
-
-    "Operational Risk Indicators": {
-      severity: 6,
-      terms: termBlock(`
-plant closure
-facility closure
-factory shutdown
-shutdown
-temporary shutdown
-permanent shutdown
-production halt
-operational disruption
-business interruption
-supply chain disruption
-supplier disruption
-vendor disruption
-labor dispute
-strike
-work stoppage
-layoffs
-workforce reduction
-headcount reduction
-furlough
-executive turnover
-management turnover
-ceo departure
-cfo departure
-cyberattack
-cyber incident
-ransomware
-system outage
-service outage
-it outage
-technology failure
-data breach
-network intrusion
-security incident
-fire
-flood
-storm damage
-facility damage
-equipment failure
-recall
-major recall
-product defect
-quality issue
-safety incident
-store closures
-branch closures
-capacity reduction
-service suspension
-occupancy pressure
-bed closure
-unit closure
-patient diversion
-staffing shortage
-natural disaster
-`)
-    },
-
-    "Municipal & Public Finance Stress": {
-      severity: 7,
-      terms: termBlock(`
-budget deficit
-budget shortfall
-structural imbalance
-structural deficit
-fund balance drawdown
-fund balance decline
-reserves depleted
-reserve draw
-cash flow borrowing
-interfund borrowing
-delayed audit
-late filing
-continuing disclosure issue
-material event notice
-qualified opinion
-adverse opinion
-disclaimer of opinion
-audit finding
-pension pressure
-opeb pressure
-unfunded pension liability
-declining tax base
-property tax delinquency
-sales tax decline
-income tax decline
-general fund pressure
-state aid reduction
-federal funding loss
-grant loss
-enrollment decline
-population decline
-chapter 9 risk
-fiscal emergency
-state oversight
-receivership risk
-emergency manager
-debt service reserve draw
-reserve fund draw
-coverage decline
-debt service coverage ratio decline
-rate covenant issue
-utility rate increase pressure
-delayed rate increase
-water loss
-sewer system issue
-consent decree costs
-capital needs pressure
-project overrun
-construction overrun
-liquidity stress
-vendor payment delays
-payroll pressure
-major employer closure
-school district deficit
-hospital district stress
-notch downgrade
-negative outlook assigned
-watch negative
-`)
-    },
-
-    "Healthcare / Hospital Stress": {
-      severity: 7,
-      terms: termBlock(`
-hospital operating loss
-negative operating margin
-cash on hand decline
-days cash on hand decline
-declining admissions
-patient volume decline
-er volume decline
-surgery volume decline
-payer mix deterioration
-medicaid concentration
-medicare shortfall
-reimbursement pressure
-denial rates increase
-higher uncompensated care
-bad debt expense
-staffing shortage
-contract labor expense
-agency labor expense
-nurse vacancy
-physician departure
-service line closure
-ward closure
-unit closure
-rating pressure
-cash flow from operations decline
-liquidity covenant
-vendor strain
-lease default risk
-bond covenant issue
-elective procedure slowdown
-collection issues
-claims processing issues
-cyber event at hospital
-ehr outage
-medicaid supplemental payment risk
-disproportionate share pressure
-rural hospital closure
-merger under distress
-divestiture of hospital assets
-closure of campus
-`)
-    },
-
-    "Corporate Actions": {
-      severity: 5,
-      terms: termBlock(`
-merger
-acquisition
-m&a
-takeover
-buyout
-asset sale
-divestiture
-sale of business
-spin-off
-spinoff
-carve-out
-ownership change
-change in control
-strategic alternatives
-exploring sale
-stake sale
-majority acquisition
-minority investment
-portfolio review
-business sale
-unit sale
-disposal
-exit market
-reorganization of operations
-restructure portfolio
-`)
-    },
-
-    "Ownership & Insider Activity": {
-      severity: 5,
-      terms: termBlock(`
-insider buying
-insider selling
-insider sale
-executive stock sale
-director sold shares
-officer sold shares
-form 4 filing
-beneficial ownership filing
-change in ownership
-change of control
-shareholder dilution
-ownership transferred
-proxy contest
-activist investor
-board challenge
-special committee
-sponsor exit
-`)
-    },
-
-    "Positive Credit Signals": {
-      severity: -3,
-      terms: termBlock(`
-rating upgraded
-credit upgrade
-positive outlook
-outlook revised to positive
-debt reduction
-deleveraging
-record revenue
-strong liquidity
-improved margins
-budget surplus
-operating surplus
-grant awarded
-contract awarded
-new funding
-capital investment
-refinanced debt
-improved financial position
-debt paid down
-strong cash flow
-improved coverage
-higher reserves
-cash build
-liquidity improvement
-cost savings realized
-expense reduction
-successful refinancing
-extension completed
-maturity wall addressed
-strong demand
-volume recovery
-occupancy improvement
-enrollment growth
-tax base growth
-collection improvement
-payer mix improvement
-settlement resolved
-investigation closed
-no action letter
-compliance remediation completed
-`)
-    }
-  };
-
-  let KEYWORD_LIBRARY = JSON.parse(JSON.stringify(DEFAULT_KEYWORD_LIBRARY));
-
-  const SAMPLE_LIBRARY = [
-    {
-      name: "1. Auto Dealer FTC / Legal Risk",
-      watchlist: "Group 1 Automotive\nLithia UK",
-      text: `
-https://www.thedrive.com/example1
-The Drive
-Group 1 Automotive appears in a list of dealers the FTC warned over deceptive pricing disclosures. The notice raised regulatory and litigation risk.
-
-https://www.motortrader.com/example2
-Motor Trader
-Lithia UK acquired three dealership sites from Group 1 Automotive in a strategic expansion deal.
-      `.trim()
-    },
-    {
-      name: "2. Hospital Liquidity Stress",
-      watchlist: "Sample Health System\nCounty Regional Hospital",
-      text: `
-https://www.samplewire.com/example3
-Sample Wire
-Sample Health System reported lower patient volumes, higher contract labor expense, declining cash flow, and reduced guidance for the year.
-
-https://www.modernhealthcare.com/example4
-Modern Healthcare
-County Regional Hospital is considering a unit closure after several quarters of operating losses and cash on hand decline.
-      `.trim()
-    },
-    {
-      name: "3. Municipal Budget Deficit",
-      watchlist: "City of Decatur\nMorgan County\nDecatur Utilities",
-      text: `
-https://www.localfinancewire.com/example5
-Local Finance Wire
-The City of Decatur projected a budget deficit and expects to draw from reserves to balance the general fund.
-
-https://www.bondbuyer.com/example6
-Bond Buyer
-Morgan County officials cited sales tax weakness, pension pressure, and structural imbalance in a recent fiscal briefing.
-      `.trim()
-    },
-    {
-      name: "4. Utility System / Covenant Pressure",
-      watchlist: "Decatur Utilities\nNorth River Water Authority",
-      text: `
-https://www.utilitynews.com/example7
-Utility News
-North River Water Authority delayed a rate increase while debt service coverage weakened and liquidity tightened.
-
-https://www.emma.msrb.org/example8
-EMMA Filing
-Decatur Utilities disclosed a debt service reserve fund draw and lower-than-expected operating cash flow.
-      `.trim()
-    },
-    {
-      name: "5. Retail / Weak Results",
-      watchlist: "Retail Holdings Inc\nMall Portfolio REIT",
-      text: `
-https://www.reuters.com/example9
-Reuters
-Retail Holdings Inc. posted declining sales, margin compression, and negative free cash flow as demand softened in several regions.
-
-https://www.prnewswire.com/example10
-PR Newswire
-Mall Portfolio REIT announced store closures and tenant weakness across multiple locations.
-      `.trim()
-    },
-    {
-      name: "6. Distressed Refinancing",
-      watchlist: "Harbor Midstream\nPioneer Manufacturing",
-      text: `
-https://www.businesswire.com/example11
-Business Wire
-Harbor Midstream is negotiating with lenders over a maturity extension and covenant waiver after liquidity pressures increased.
-
-https://www.ft.com/example12
-Financial Times
-Pioneer Manufacturing warned that refinancing risk remains elevated due to near-term debt maturities.
-      `.trim()
-    },
-    {
-      name: "7. Positive Credit Signal",
-      watchlist: "Sunrise Utilities\nMetro School District",
-      text: `
-https://www.globenewswire.com/example13
-GlobeNewswire
-Sunrise Utilities completed a successful refinancing, reduced leverage, and reported improved liquidity.
-
-https://www.localgovnews.com/example14
-Local Gov News
-Metro School District adopted a balanced budget with higher reserves and stronger enrollment trends.
-      `.trim()
-    },
-    {
-      name: "8. Cyber / Operational Event",
-      watchlist: "Community Hospital Network\nCivic Data Services",
-      text: `
-https://www.apnews.com/example15
-AP News
-Community Hospital Network disclosed a ransomware event that disrupted patient scheduling and billing systems.
-
-https://www.techoperationalwire.com/example16
-Tech Operational Wire
-Civic Data Services reported a prolonged system outage and customer service interruption following a cyberattack.
-      `.trim()
-    },
-    {
-      name: "9. Real Estate / Occupancy Pressure",
-      watchlist: "Downtown Office Trust\nCampus Housing Authority",
-      text: `
-https://www.wsj.com/example17
-WSJ
-Downtown Office Trust continues to face occupancy decline, refinancing pressure, and weaker leasing demand.
-
-https://www.realestatewire.com/example18
-Real Estate Wire
-Campus Housing Authority cited declining occupancy and debt service coverage pressure in its latest update.
-      `.trim()
-    },
-    {
-      name: "10. Default / Bankruptcy Scenario",
-      watchlist: "River Bend Energy\nRegional Medical Properties",
-      text: `
-https://www.reuters.com/example19
-Reuters
-River Bend Energy missed an interest payment and entered negotiations with creditors after an event of default under its credit agreement.
-
-https://www.businesswire.com/example20
-Business Wire
-Regional Medical Properties is evaluating restructuring options after a going-concern warning and weak liquidity profile.
-      `.trim()
-    }
-  ];
-
-  let lastResults = [];
-  let parsedChunkCount = 0;
-  let expandedRawId = null;
-  let importedChunks = [];
-
-  const el = {
-  statusBox: document.getElementById("statusBox"),
-  alertText: document.getElementById("alertText"),
-  watchlistText: document.getElementById("watchlistText"),
-  ...
-  btnLoadSample: document.getElementById("btnLoadSample")
-};
-
-function persistWatchlist() {
-  try {
-    localStorage.setItem(STORAGE_KEYS.watchlist, el.watchlistText.value || "");
-  } catch (err) {
-    console.warn("Watchlist save failed:", err);
-  }
-}
-
-function restoreWatchlist() {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEYS.watchlist);
-    if (saved) {
-      el.watchlistText.value = saved;
-    }
-  } catch (err) {
-    console.warn("Watchlist restore failed:", err);
-  }
-}
-
-function toggleKeywordLibrary() {
-  el.keywordLibraryWrap.style.display =
-    el.keywordLibraryWrap.style.display === "none" ? "block" : "none";
-}
-
-function setStatus(message, type) {
-  ...
-}
-    statusBox: document.getElementById("statusBox"),
-    alertText: document.getElementById("alertText"),
-    watchlistText: document.getElementById("watchlistText"),
-    minPriority: document.getElementById("minPriority"),
-    categoryFilter: document.getElementById("categoryFilter"),
-    searchBox: document.getElementById("searchBox"),
-    sortBy: document.getElementById("sortBy"),
-    sampleSelect: document.getElementById("sampleSelect"),
-    results: document.getElementById("results"),
-    shownCount: document.getElementById("shownCount"),
-    parsedCount: document.getElementById("parsedCount"),
-    countHigh: document.getElementById("countHigh"),
-    countMedium: document.getElementById("countMedium"),
-    countLow: document.getElementById("countLow"),
-    countPositive: document.getElementById("countPositive"),
-    keywordCount: document.getElementById("keywordCount"),
-    keywordLibraryWrap: document.getElementById("keywordLibraryWrap"),
-    keywordLibrary: document.getElementById("keywordLibrary"),
-    fileInput: document.getElementById("fileInput"),
-    uploadBox: document.getElementById("uploadBox"),
-    sourceList: document.getElementById("sourceList"),
-    btnAnalyzeTop: document.getElementById("btnAnalyzeTop"),
-    btnAnalyzeSide: document.getElementById("btnAnalyzeSide"),
-    btnRefresh: document.getElementById("btnRefresh"),
-    btnExportCsv: document.getElementById("btnExportCsv"),
-    btnExportJson: document.getElementById("btnExportJson"),
-    btnExportMarkdown: document.getElementById("btnExportMarkdown"),
-    btnKeywordToggle: document.getElementById("btnKeywordToggle"),
-    btnApplyKeywords: document.getElementById("btnApplyKeywords"),
-    btnClear: document.getElementById("btnClear"),
-    btnLoadSample: document.getElementById("btnLoadSample")
-  };
-
-  function setStatus(message, type) {
-    if (!message) {
-      el.statusBox.className = "status";
-      el.statusBox.textContent = "";
-      return;
-    }
-    el.statusBox.className = "status " + (type === "error" ? "error" : "ok");
-    el.statusBox.textContent = message;
-  }
-
-  function escapeHtml(str) {
-    return String(str)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
-  }
-
-  function normalize(text) {
-    return String(text || "")
-      .replace(/\r/g, "\n")
-      .replace(/[ \t]+/g, " ")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim();
-  }
-
-  function stripHtml(text) {
-    const div = document.createElement("div");
-    div.innerHTML = String(text || "");
-    return normalize(div.textContent || div.innerText || "");
-  }
-
-  function decodeHtmlEntities(text) {
-    const textarea = document.createElement("textarea");
-    textarea.innerHTML = String(text || "");
-    return textarea.value;
-  }
-
-  function cleanEmailText(text) {
-    let t = String(text || "");
-    t = decodeHtmlEntities(t);
-    t = t.replace(/<style[\s\S]*?<\/style>/gi, "\n");
-    t = t.replace(/<script[\s\S]*?<\/script>/gi, "\n");
-    t = t.replace(/<br\s*\/?>/gi, "\n");
-    t = t.replace(/<\/p>/gi, "\n");
-    t = t.replace(/<\/div>/gi, "\n");
-    t = t.replace(/<\/tr>/gi, "\n");
-    t = t.replace(/<\/table>/gi, "\n");
-    t = t.replace(/<\/td>/gi, " ");
-    t = stripHtml(t);
-
-    t = t
-      .split("\n")
-      .map(line => line.trim())
-      .filter(line => line && !GOOGLE_NOISE_PATTERNS.some(p => p.test(line)))
-      .join("\n");
-
-    return normalize(t);
-  }
-
-  function decodeMimeWords(str) {
-    return String(str || "").replace(/=\?([^?]+)\?([bBqQ])\?([^?]+)\?=/g, (_, charset, enc, data) => {
+  <script>
+    window.addEventListener("load", function () {
       try {
-        if (/^b$/i.test(enc)) {
-          const binary = atob(data.replace(/\s/g, ""));
-          const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
-          return decodeBytes(bytes, charset);
-        } else {
-          let qp = data.replace(/_/g, " ");
-          qp = qp.replace(/=([A-Fa-f0-9]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
-          const bytes = Uint8Array.from(qp.split("").map(c => c.charCodeAt(0)));
-          return decodeBytes(bytes, charset);
+        initApp();
+      } catch (err) {
+        console.error(err);
+        const box = document.getElementById("statusBox");
+        if (box) {
+          box.className = "status error";
+          box.textContent = "Startup error: " + err.message;
         }
-      } catch {
-        return data;
       }
     });
-  }
 
-  function normalizeCharset(charset) {
-    const cs = String(charset || "").toLowerCase().trim();
-    if (!cs) return "utf-8";
-    if (cs === "utf8") return "utf-8";
-    if (cs === "us-ascii") return "utf-8";
-    if (cs === "latin1") return "iso-8859-1";
-    return cs;
-  }
-
-  function decodeBytes(bytes, charset = "utf-8") {
-    try {
-      return new TextDecoder(normalizeCharset(charset), { fatal: false }).decode(bytes);
-    } catch {
-      try {
-        return new TextDecoder("utf-8", { fatal: false }).decode(bytes);
-      } catch {
-        return Array.from(bytes).map(b => String.fromCharCode(b)).join("");
+    function initApp() {
+      if (window.pdfjsLib) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc =
+          "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
       }
-    }
-  }
 
-  function base64ToBytes(input) {
-    const clean = String(input || "").replace(/\s+/g, "");
-    const binary = atob(clean);
-    return Uint8Array.from(binary, c => c.charCodeAt(0));
-  }
-
-  function quotedPrintableToBytes(input) {
-    let str = String(input || "").replace(/=\r?\n/g, "");
-    const out = [];
-    for (let i = 0; i < str.length; i++) {
-      if (str[i] === "=" && /[A-Fa-f0-9]{2}/.test(str.slice(i + 1, i + 3))) {
-        out.push(parseInt(str.slice(i + 1, i + 3), 16));
-        i += 2;
-      } else {
-        out.push(str.charCodeAt(i));
-      }
-    }
-    return Uint8Array.from(out);
-  }
-
-  function decodeBodyByEncoding(bodyText, encoding, charset) {
-    const enc = String(encoding || "").toLowerCase();
-    try {
-      if (enc.includes("base64")) {
-        return decodeBytes(base64ToBytes(bodyText), charset);
-      }
-      if (enc.includes("quoted-printable")) {
-        return decodeBytes(quotedPrintableToBytes(bodyText), charset);
-      }
-      const rawBytes = Uint8Array.from(String(bodyText || "").split("").map(c => c.charCodeAt(0)));
-      return decodeBytes(rawBytes, charset);
-    } catch {
-      return String(bodyText || "");
-    }
-  }
-
-  function splitHeaderBody(raw) {
-    const match = String(raw || "").match(/\r?\n\r?\n/);
-    if (!match) return { headerText: raw, bodyText: "" };
-    const idx = match.index;
-    return {
-      headerText: raw.slice(0, idx),
-      bodyText: raw.slice(idx + match[0].length)
-    };
-  }
-
-  function unfoldHeaderLines(headerText) {
-    return String(headerText || "").replace(/\r?\n([ \t]+)/g, " ");
-  }
-
-  function parseHeaders(headerText) {
-    const lines = unfoldHeaderLines(headerText).split(/\r?\n/);
-    const headers = {};
-    for (const line of lines) {
-      const idx = line.indexOf(":");
-      if (idx === -1) continue;
-      const name = line.slice(0, idx).trim().toLowerCase();
-      const value = line.slice(idx + 1).trim();
-      headers[name] = value;
-    }
-    return headers;
-  }
-
-  function parseHeaderParams(headerValue) {
-    const raw = String(headerValue || "");
-    const segments = raw.split(";").map(x => x.trim());
-    const main = (segments[0] || "").toLowerCase();
-    const params = {};
-
-    for (let i = 1; i < segments.length; i++) {
-      const idx = segments[i].indexOf("=");
-      if (idx === -1) continue;
-      const key = segments[i].slice(0, idx).trim().toLowerCase();
-      let val = segments[i].slice(idx + 1).trim();
-      val = val.replace(/^"(.*)"$/, "$1");
-      params[key] = val;
-    }
-
-    return { main, params };
-  }
-
-  function getFilenameFromHeaders(headers) {
-    const disp = parseHeaderParams(headers["content-disposition"] || "");
-    const type = parseHeaderParams(headers["content-type"] || "");
-
-    return decodeMimeWords(
-      disp.params["filename*"] ||
-      disp.params["filename"] ||
-      type.params["name*"] ||
-      type.params["name"] ||
-      ""
-    );
-  }
-
-  function splitMultipart(bodyText, boundary) {
-    const marker = "--" + boundary;
-    const endMarker = marker + "--";
-    const lines = String(bodyText || "").split(/\r?\n/);
-    const parts = [];
-    let current = [];
-    let inside = false;
-
-    for (const line of lines) {
-      if (line === marker) {
-        if (inside && current.length) {
-          parts.push(current.join("\n"));
-          current = [];
-        }
-        inside = true;
-        continue;
-      }
-      if (line === endMarker) {
-        if (inside && current.length) {
-          parts.push(current.join("\n"));
-        }
-        break;
-      }
-      if (inside) current.push(line);
-    }
-    return parts;
-  }
-
-  function parseMimeEntity(raw) {
-    const { headerText, bodyText } = splitHeaderBody(raw);
-    const headers = parseHeaders(headerText);
-    const subject = decodeMimeWords(headers["subject"] || "");
-    const from = decodeMimeWords(headers["from"] || "");
-    const date = headers["date"] || "";
-    const contentType = parseHeaderParams(headers["content-type"] || "text/plain");
-    const encoding = headers["content-transfer-encoding"] || "";
-    const charset = contentType.params.charset || "utf-8";
-    const filename = getFilenameFromHeaders(headers);
-
-    const result = {
-      headers,
-      subject,
-      from,
-      date,
-      plainParts: [],
-      htmlParts: [],
-      attachments: []
-    };
-
-    if (contentType.main === "message/rfc822") {
-      const nested = parseMimeEntity(bodyText);
-      result.plainParts.push(...nested.plainParts);
-      result.htmlParts.push(...nested.htmlParts);
-      result.attachments.push(...nested.attachments);
-      return result;
-    }
-
-    if (contentType.main.startsWith("multipart/")) {
-      const boundary = contentType.params.boundary;
-      if (!boundary) return result;
-      const parts = splitMultipart(bodyText, boundary);
-      parts.forEach(part => {
-        const child = parseMimeEntity(part);
-        result.plainParts.push(...child.plainParts);
-        result.htmlParts.push(...child.htmlParts);
-        result.attachments.push(...child.attachments);
-      });
-      return result;
-    }
-
-    const decoded = decodeBodyByEncoding(bodyText, encoding, charset);
-    const mime = contentType.main || "text/plain";
-
-    const isAttachment =
-      !!filename ||
-      /attachment/i.test(headers["content-disposition"] || "");
-
-    if (isAttachment) {
-      const ext = (filename || "").toLowerCase();
-      const att = {
-        filename: filename || "attachment",
-        mimeType: mime,
-        text: ""
+      const PRIORITY_RANK = {
+        "High": 4,
+        "Medium": 3,
+        "Low": 2,
+        "Positive / Monitor": 1,
+        "Ignore": 0
       };
 
-      if (
-        mime.includes("text/plain") ||
-        mime.includes("text/html") ||
-        ext.endsWith(".txt") ||
-        ext.endsWith(".md") ||
-        ext.endsWith(".log") ||
-        ext.endsWith(".csv")
-      ) {
-        att.text = mime.includes("text/html") ? cleanEmailText(decoded) : normalize(decoded);
-      } else if (ext.endsWith(".eml") || mime === "message/rfc822") {
-        const nested = parseMimeEntity(decoded);
-        att.text = cleanEmailText(
-          nested.plainParts.join("\n\n") || nested.htmlParts.join("\n\n")
-        );
-      } else {
-        att.text = "";
-      }
+      const GOOGLE_NOISE_PATTERNS = [
+        /manage your alerts/i,
+        /unsubscribe/i,
+        /google alerts/i,
+        /see more results/i,
+        /edit this alert/i,
+        /you have received this email/i,
+        /rss feed/i,
+        /flag as irrelevant/i,
+        /view all your alerts/i,
+        /send feedback/i,
+        /facebook/i,
+        /twitter/i,
+        /external email/i,
+        /CAUTION:/i,
+        /do not click links/i,
+        /contact the .* help desk/i
+      ];
 
-      result.attachments.push(att);
-      return result;
-    }
+      const SOURCE_NOISE_PATTERNS = [
+        /investing\.com/i,
+        /benzinga/i
+      ];
 
-    if (mime.includes("text/plain")) {
-      result.plainParts.push(normalize(decoded));
-      return result;
-    }
+      const LOW_VALUE_PATTERNS = [
+        /people also watch/i,
+        /compare against competitors/i,
+        /summary table/i,
+        /corporate event calendar/i,
+        /price total return/i,
+        /net income to common/i,
+        /stock price/i,
+        /quote/i
+      ];
 
-    if (mime.includes("text/html")) {
-      result.htmlParts.push(decoded);
-      return result;
-    }
+      const SOURCE_WEIGHTS = [
+        { pattern: /sec\.gov|ftc\.gov|doj\.gov|emma\.msrb\.org|moodys|fitchratings|spglobal|krollbondratings|kbra/i, boost: 4, label: "Primary / regulatory / rating source" },
+        { pattern: /reuters|bloomberg|wsj|ft\.com|apnews|prnewswire|businesswire|globenewswire/i, boost: 2, label: "Financial/newswire source" }
+      ];
 
-    if (decoded && decoded.trim() && mime.startsWith("text/")) {
-      result.plainParts.push(normalize(decoded));
-    }
+      const KEYWORD_LIBRARY = {
+        "Bankruptcy & Insolvency": {
+          severity: 10,
+          terms: [
+            "bankruptcy","filed for bankruptcy","chapter 7","chapter 11","chapter 13","insolvency","insolvent",
+            "liquidation","receivership","restructuring","debt restructuring","financial distress",
+            "debtor-in-possession","dip financing","out-of-court restructuring","moratorium on payments"
+          ]
+        },
+        "Credit Deterioration & Default": {
+          severity: 9,
+          terms: [
+            "default","payment default","missed payment","past due","delinquent","loan default",
+            "covenant breach","technical default","rating downgrade","credit downgrade","negative outlook",
+            "credit watch","creditwatch","distressed exchange","collections action","write-off","charge-off",
+            "increased leverage","liquidity pressures","financial weakness","refinancing risk","bond default",
+            "going concern warning","liquidity shortfall","cash flow problems"
+          ]
+        },
+        "Corporate Actions": {
+          severity: 5,
+          terms: [
+            "merger","acquisition","m&a","takeover","buyout","asset sale","divestiture","sale of business",
+            "spin-off","spinoff","carve-out","ownership change","change in control","strategic alternatives",
+            "exploring sale","stake sale","majority acquisition","minority investment"
+          ]
+        },
+        "Legal & Regulatory Issues": {
+          severity: 7,
+          terms: [
+            "lawsuit","litigation","legal action","class action","court ruling","judgment","settlement",
+            "regulatory investigation","sec investigation","ftc","doj investigation","enforcement action",
+            "penalty","fine imposed","compliance violation","fraud allegations","accounting fraud",
+            "financial restatement","material weakness","subpoena","criminal charges","civil charges",
+            "license revoked","permit revoked","cease and desist order","antitrust investigation","indictment"
+          ]
+        },
+        "Financial Performance Warning Signs": {
+          severity: 7,
+          terms: [
+            "earnings miss","revenue decline","profit decline","net loss","operating loss","negative ebitda",
+            "margin compression","declining sales","weak outlook","reduced guidance","lowered forecast",
+            "declining cash flow","cash burn","liquidity concerns","weak demand","lower volumes",
+            "negative free cash flow","poor financial results","declining profitability","financial strain"
+          ]
+        },
+        "Financing & Debt Activity": {
+          severity: 6,
+          terms: [
+            "bond issuance","loan refinancing","refinancing delay","credit facility","revolver drawdown",
+            "debt repayment","debt buyback","debt restructuring","increased borrowing","leverage ratio",
+            "covenant amendment","waiver granted","loan amendment","bridge loan","emergency funding",
+            "capital raise","equity issuance","private placement","convertible debt","capital injection",
+            "funding shortfall","lender negotiations","funding crisis","debt maturity extension",
+            "credit agreement","revolving credit facility","term loan b","new loan facility"
+          ]
+        },
+        "Operational Risk Indicators": {
+          severity: 6,
+          terms: [
+            "plant closure","factory shutdown","layoffs","workforce reduction","job cuts","furloughs","strike",
+            "labor dispute","supply chain disruption","production halt","operational disruption",
+            "system outage","cyberattack","data breach","business interruption","facility damage",
+            "major recall","product defect","quality issue","store closures","facility closures",
+            "shutdown announcement","business shutdown","closing operations","mass layoffs","headcount reduction"
+          ]
+        },
+        "Ownership & Insider Activity": {
+          severity: 5,
+          terms: [
+            "insider buying","insider selling","insider sale","executive stock sale","director sold shares",
+            "officer sold shares","form 4 filing","beneficial ownership filing","change in ownership",
+            "change of control","shareholder dilution","ownership transferred","proxy contest"
+          ]
+        },
+        "Positive Credit Signals": {
+          severity: -3,
+          terms: [
+            "rating upgraded","credit upgrade","positive outlook","debt reduction","deleveraging","record revenue",
+            "strong liquidity","improved margins","budget surplus","grant awarded","contract awarded","new funding",
+            "capital investment","refinanced debt","improved financial position","debt paid down","strong cash flow"
+          ]
+        }
+      };
 
-    return result;
-  }
+      let lastResults = [];
+      let parsedChunkCount = 0;
+      let expandedRawId = null;
+      let importedChunks = [];
 
-  function parseEml(rawText, sourceName = "email.eml") {
-    const parsed = parseMimeEntity(rawText);
+      const el = {
+        statusBox: document.getElementById("statusBox"),
+        alertText: document.getElementById("alertText"),
+        watchlistText: document.getElementById("watchlistText"),
+        minPriority: document.getElementById("minPriority"),
+        categoryFilter: document.getElementById("categoryFilter"),
+        searchBox: document.getElementById("searchBox"),
+        sortBy: document.getElementById("sortBy"),
+        results: document.getElementById("results"),
+        shownCount: document.getElementById("shownCount"),
+        parsedCount: document.getElementById("parsedCount"),
+        countHigh: document.getElementById("countHigh"),
+        countMedium: document.getElementById("countMedium"),
+        countLow: document.getElementById("countLow"),
+        countPositive: document.getElementById("countPositive"),
+        keywordCount: document.getElementById("keywordCount"),
+        keywordLibraryWrap: document.getElementById("keywordLibraryWrap"),
+        keywordLibrary: document.getElementById("keywordLibrary"),
+        fileInput: document.getElementById("fileInput"),
+        uploadBox: document.getElementById("uploadBox"),
+        sourceList: document.getElementById("sourceList"),
+        btnAnalyzeTop: document.getElementById("btnAnalyzeTop"),
+        btnAnalyzeSide: document.getElementById("btnAnalyzeSide"),
+        btnRefresh: document.getElementById("btnRefresh"),
+        btnExportCsv: document.getElementById("btnExportCsv"),
+        btnExportJson: document.getElementById("btnExportJson"),
+        btnExportMarkdown: document.getElementById("btnExportMarkdown"),
+        btnKeywordToggle: document.getElementById("btnKeywordToggle"),
+        btnApplyKeywords: document.getElementById("btnApplyKeywords"),
+        btnClear: document.getElementById("btnClear"),
+        btnLoadSample: document.getElementById("btnLoadSample")
+      };
 
-    const subject = parsed.subject || sourceName || "Untitled email";
-    const from = parsed.from || "EML message";
-    const date = parsed.date || "";
-
-    const joinedHtml = parsed.htmlParts.join("\n\n");
-    const body = cleanEmailText(
-      parsed.plainParts.join("\n\n") || joinedHtml
-    );
-
-    const chunks = [];
-
-    if (body || joinedHtml) {
-      chunks.push({
-        sourceType: "eml-body",
-        sourceName,
-        title: subject,
-        source: from,
-        metaDate: date,
-        text: body,
-        html: joinedHtml,
-        url: ""
-      });
-    }
-
-    parsed.attachments.forEach(att => {
-      if (att.text && att.text.trim()) {
-        chunks.push({
-          sourceType: "eml-attachment",
-          sourceName: att.filename,
-          title: att.filename + " (" + subject + ")",
-          source: "EML attachment",
-          metaDate: date,
-          text: att.text.trim(),
-          html: "",
-          url: ""
-        });
-      }
-    });
-
-    return {
-      subject,
-      from,
-      date,
-      body,
-      attachments: parsed.attachments,
-      chunks
-    };
-  }
-
-  function resolveRedirectUrl(url) {
-    try {
-      const u = new URL(url);
-      if (/google\./i.test(u.hostname)) {
-        const q = u.searchParams.get("q") || u.searchParams.get("url");
-        if (q) return q;
-      }
-      return url;
-    } catch {
-      return url;
-    }
-  }
-
-  function extractAlertArticlesFromHtml(html, fallbackMeta = {}) {
-    const articles = [];
-    if (!html || !html.trim()) return articles;
-
-    const wrapper = document.createElement("div");
-    wrapper.innerHTML = html;
-
-    const anchors = Array.from(wrapper.querySelectorAll("a[href]"));
-    const seen = new Set();
-
-    anchors.forEach(a => {
-      let href = a.getAttribute("href") || "";
-      href = resolveRedirectUrl(href);
-
-      if (!/^https?:\/\//i.test(href)) return;
-      if (/google\.com\/alerts|manage your alerts|unsubscribe/i.test(href)) return;
-
-      const title = normalize(a.textContent || "");
-      if (!title || title.length < 4) return;
-
-      const key = title + "||" + href;
-      if (seen.has(key)) return;
-      seen.add(key);
-
-      let block = a.closest("tr, table, div, li, p") || a.parentElement || a;
-      let rawHtml = block.innerHTML || "";
-      let cleanedBlockText = cleanEmailText(rawHtml || block.textContent || "");
-      cleanedBlockText = cleanedBlockText.replace(title, "").trim();
-
-      const lines = cleanedBlockText.split("\n").map(x => x.trim()).filter(Boolean);
-      const source = lines[0] || fallbackMeta.source || "";
-      const snippet = lines.slice(1).join(" ").trim() || cleanedBlockText;
-
-      articles.push({
-        kind: "article",
-        title,
-        source,
-        snippet,
-        url: href,
-        raw: [title, source, snippet, href].filter(Boolean).join("\n"),
-        rawMeta: fallbackMeta
-      });
-    });
-
-    return articles;
-  }
-
-  function detectEntities(text, watchlistText) {
-    const lower = String(text || "").toLowerCase();
-    const entities = [];
-
-    String(watchlistText || "")
-      .split(/\n|,|;/)
-      .map(x => x.trim())
-      .filter(Boolean)
-      .forEach(entity => {
-        if (lower.includes(entity.toLowerCase())) entities.push(entity);
-      });
-
-    const patterns = [
-      /\bCity of [A-Z][A-Za-z .'-]+/g,
-      /\bTown of [A-Z][A-Za-z .'-]+/g,
-      /\b[A-Z][A-Za-z .'-]+ County\b/g,
-      /\b[A-Z][A-Za-z .'-]+ School District\b/g,
-      /\b[A-Z][A-Za-z .'-]+ Water Authority\b/g,
-      /\b[A-Z][A-Za-z .'-]+ Utility District\b/g,
-      /\b[A-Z][A-Za-z .'-]+ Hospital\b/g,
-      /\bGroup 1 Automotive\b/gi,
-      /\bLithia UK\b/gi
-    ];
-
-    patterns.forEach(p => {
-      const matches = String(text || "").match(p) || [];
-      matches.forEach(x => entities.push(x.trim().replace(/[.,;:]$/, "")));
-    });
-
-    return Array.from(new Set(entities.map(x => x.trim())));
-  }
-
-  function extractGoogleAlertArticles(rawText, fallbackMeta = {}) {
-    const text = cleanEmailText(rawText);
-    const articles = [];
-
-    const linkRegex = /\[([^\]]+?)\]\((https?:\/\/[^\s)]+)\)/g;
-    const matches = Array.from(text.matchAll(linkRegex));
-
-    if (matches.length) {
-      for (let i = 0; i < matches.length; i++) {
-        const current = matches[i];
-        const next = matches[i + 1];
-
-        const title = current[1].trim();
-        const url = resolveRedirectUrl(current[2].trim());
-
-        const start = current.index + current[0].length;
-        const end = next ? next.index : text.length;
-        const between = text.slice(start, end).trim();
-
-        const lines = between.split("\n").map(x => x.trim()).filter(Boolean);
-        const source = lines[0] || fallbackMeta.source || "";
-        const snippet = lines.slice(1).join(" ").trim();
-
-        articles.push({
-          kind: "article",
-          title: title.replace(/\s+-\s+(Facebook|Twitter)\s*$/i, "").trim(),
-          source,
-          snippet,
-          url,
-          raw: [title, source, snippet, url].filter(Boolean).join("\n"),
-          rawMeta: fallbackMeta
-        });
-      }
-    }
-
-    if (!articles.length) {
-      const blocks = text.split(/\n\s*\n/).map(x => x.trim()).filter(x => x.length > 50);
-
-      blocks.forEach(block => {
-        const urls = extractUrls(block).map(resolveRedirectUrl);
-        if (!urls.length) return;
-
-        const lines = block.split("\n").map(x => x.trim()).filter(Boolean);
-        const title = lines[0] || fallbackMeta.title || "Untitled article";
-        const source = lines[1] || fallbackMeta.source || "";
-        const snippet = lines.slice(2).join(" ");
-
-        articles.push({
-          kind: "article",
-          title,
-          source,
-          snippet,
-          url: urls[0],
-          raw: block,
-          rawMeta: fallbackMeta
-        });
-      });
-    }
-
-    return articles.filter(a => a.title && (a.url || a.raw));
-  }
-
-  function looksLikeGoogleAlertText(text) {
-    const t = String(text || "");
-    return /\[([^\]]+?)\]\((https?:\/\/[^\s)]+)\)/.test(t) ||
-           /(google alert|see more results|manage your alerts)/i.test(t) ||
-           (extractUrls(t).length >= 2);
-  }
-
-  function buildAnalysisItems(chunks) {
-    const items = [];
-
-    chunks.forEach(chunk => {
-      if (chunk.html && chunk.html.trim()) {
-        const htmlArticles = extractAlertArticlesFromHtml(chunk.html, {
-          source: chunk.source || "",
-          title: chunk.title || "",
-          url: chunk.url || "",
-          sourceName: chunk.sourceName || ""
-        });
-
-        if (htmlArticles.length) {
-          items.push(...htmlArticles);
+      function setStatus(message, type) {
+        if (!message) {
+          el.statusBox.className = "status";
+          el.statusBox.textContent = "";
           return;
+        }
+        el.statusBox.className = "status " + (type === "error" ? "error" : "ok");
+        el.statusBox.textContent = message;
+      }
+
+      function escapeHtml(str) {
+        return String(str)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      function decodeHtmlEntities(text) {
+        const textarea = document.createElement("textarea");
+        textarea.innerHTML = text;
+        return textarea.value;
+      }
+
+      function normalize(text) {
+        return String(text || "")
+          .replace(/\r/g, "\n")
+          .replace(/[ \t]+/g, " ")
+          .replace(/\n{3,}/g, "\n\n")
+          .trim();
+      }
+
+      function stripHtml(text) {
+        const div = document.createElement("div");
+        div.innerHTML = String(text || "");
+        return normalize(div.textContent || div.innerText || "");
+      }
+
+      function decodeQuotedPrintable(input) {
+        let str = String(input || "");
+        str = str.replace(/=\r?\n/g, "");
+        str = str.replace(/=([A-Fa-f0-9]{2})/g, (_, hex) => {
+          return String.fromCharCode(parseInt(hex, 16));
+        });
+        try {
+          const bytes = Uint8Array.from(str.split("").map(c => c.charCodeAt(0)));
+          return new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+        } catch {
+          return str;
         }
       }
 
-      if (looksLikeGoogleAlertText(chunk.text || "")) {
-        const found = extractGoogleAlertArticles(chunk.text || "", {
-          source: chunk.source || "",
-          title: chunk.title || "",
-          url: chunk.url || "",
-          sourceName: chunk.sourceName || ""
-        });
-
-        if (found.length) {
-          items.push(...found);
-          return;
+      function decodeBase64Text(input) {
+        const compact = String(input || "").replace(/\s+/g, "");
+        try {
+          const binary = atob(compact);
+          const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+          return new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+        } catch {
+          return input;
         }
       }
 
-      const cleaned = cleanEmailText(chunk.text || "");
-      if (cleaned) {
-        items.push({
-          kind: "document",
-          title: chunk.title || chunk.sourceName || "Imported document",
-          source: chunk.source || chunk.sourceName || "Imported source",
-          snippet: excerpt(cleaned, 700),
-          url: chunk.url || "",
-          raw: cleaned,
-          rawMeta: chunk
-        });
+      function cleanEmailText(text) {
+        let t = String(text || "");
+        t = decodeHtmlEntities(t);
+        t = t.replace(/<style[\s\S]*?<\/style>/gi, "\n");
+        t = t.replace(/<script[\s\S]*?<\/script>/gi, "\n");
+        t = t.replace(/<br\s*\/?>/gi, "\n");
+        t = t.replace(/<\/p>/gi, "\n");
+        t = t.replace(/<\/div>/gi, "\n");
+        t = t.replace(/<\/tr>/gi, "\n");
+        t = t.replace(/<\/table>/gi, "\n");
+        t = t.replace(/<\/td>/gi, " ");
+        t = stripHtml(t);
+
+        t = t
+          .split("\n")
+          .map(line => line.trim())
+          .filter(line => line && !GOOGLE_NOISE_PATTERNS.some(p => p.test(line)))
+          .join("\n");
+
+        return normalize(t);
       }
-    });
 
-    return items;
-  }
-
-  function isLowValueArticle(article) {
-    const combined = [article.title, article.source, article.snippet, article.raw].join(" ").toLowerCase();
-
-    if (GOOGLE_NOISE_PATTERNS.some(p => p.test(combined))) return true;
-    if (LOW_VALUE_PATTERNS.some(p => p.test(combined))) return true;
-
-    if (article.kind === "article") {
-      if (SOURCE_NOISE_PATTERNS.some(p => p.test(article.source)) || SOURCE_NOISE_PATTERNS.some(p => p.test(article.url))) {
-        const hasRealCreditSignal =
-          /(lawsuit|investigation|fraud|subpoena|default|bankruptcy|liquidity|downgrade|layoffs|closure|asset sale|divestiture|acquisition|debt|refinancing|credit facility|ftc|doj|sec)/i
-            .test(combined);
-        if (!hasRealCreditSignal) return true;
-      }
-    }
-
-    return false;
-  }
-
-  function scoreArticle(article, watchlistText) {
-    const text = [article.title, article.source, article.snippet, article.raw].join(" ");
-    let score = 0;
-    const categories = [];
-    const matches = {};
-
-    Object.keys(KEYWORD_LIBRARY).forEach(category => {
-      const config = KEYWORD_LIBRARY[category];
-      const hits = [];
-      config.terms.forEach(term => {
-        if (termRegex(term).test(text)) hits.push(term);
-      });
-
-      if (hits.length) {
-        categories.push(category);
-        matches[category] = Array.from(new Set(hits));
-        score += Number(config.severity || 5) + Math.min(hits.length, 6);
-      }
-    });
-
-    const domain = article.url ? domainFromUrl(article.url) : "";
-    let sourceLabel = article.source || domain || "Standard source";
-
-    SOURCE_WEIGHTS.forEach(src => {
-      if (src.pattern.test(domain) || src.pattern.test(article.source) || src.pattern.test(text)) {
-        score += src.boost;
-        sourceLabel = src.label;
-      }
-    });
-
-    const entities = detectEntities(text, watchlistText);
-    if (entities.length > 0) score += 3;
-    if (categories.length >= 2) score += 2;
-
-    return { score, categories, matches, entities, sourceLabel };
-  }
-
-  function priority(score, categories) {
-    const severe = [
-      "Bankruptcy & Insolvency",
-      "Credit Deterioration & Default",
-      "Legal & Regulatory Issues",
-      "Municipal & Public Finance Stress",
-      "Healthcare / Hospital Stress"
-    ];
-
-    if (categories.includes("Bankruptcy & Insolvency")) return "High";
-    if (categories.some(c => severe.includes(c)) && score >= 12) return "High";
-    if (score >= 16) return "High";
-    if (score >= 9) return "Medium";
-    if (score >= 4) return "Low";
-    if (score < 0) return "Positive / Monitor";
-    return "Ignore";
-  }
-
-  function riskReason(row) {
-    if (row.categories.includes("Bankruptcy & Insolvency")) return "Bankruptcy or insolvency language detected.";
-    if (row.categories.includes("Credit Deterioration & Default")) return "Default, downgrade, covenant, liquidity, or payment stress detected.";
-    if (row.categories.includes("Legal & Regulatory Issues")) return "Legal, enforcement, compliance, or investigation risk detected.";
-    if (row.categories.includes("Municipal & Public Finance Stress")) return "Budget, reserves, debt service, or municipal credit stress detected.";
-    if (row.categories.includes("Healthcare / Hospital Stress")) return "Hospital liquidity, operations, or reimbursement pressure detected.";
-    if (row.categories.includes("Corporate Actions")) return "Asset sale, divestiture, acquisition, or strategic transaction detected.";
-    if (row.categories.includes("Financing & Debt Activity")) return "Debt, refinancing, credit agreement, or funding activity detected.";
-    if (row.categories.includes("Operational Risk Indicators")) return "Operational disruption, closures, layoffs, or cyber risk detected.";
-    if (row.categories.includes("Positive Credit Signals")) return "Possible positive credit signal.";
-    return "Potentially relevant for credit review.";
-  }
-
-  function normalizeTokens(text) {
-    return String(text || "")
-      .toLowerCase()
-      .replace(/group 1 automotive/g, "group1")
-      .replace(/lithia uk/g, "lithiauk")
-      .replace(/jaguar land rover/g, "jlr")
-      .replace(/acquires?|acquired|acquisition/g, "acquire")
-      .replace(/sells?|sold|sale|dispose|divestiture/g, "sell")
-      .replace(/dealerships?/g, "dealer")
-      .replace(/sites?/g, "site")
-      .replace(/[^a-z0-9\s]/g, " ")
-      .split(/\s+/)
-      .filter(Boolean)
-      .filter(t => t.length > 2)
-      .filter(t => !["the","and","for","with","from","into","over","here","are","all","this","that","has","have","will","its","inc","news","group"].includes(t));
-  }
-
-  function articleEventKey(row) {
-    const text = [row.title, row.excerpt, row.entities.join(" ")].join(" ");
-    const tokens = normalizeTokens(text);
-
-    const importantTokens = [];
-    const mustKeep = [
-      "group1","lithiauk","jlr","ftc","deceptive","pricing","lawsuit","investigation",
-      "sell","acquire","dealer","site","asset","divestiture","regulatory","default",
-      "bankruptcy","liquidity","downgrade"
-    ];
-
-    mustKeep.forEach(t => {
-      if (tokens.includes(t)) importantTokens.push(t);
-    });
-
-    tokens.forEach(t => {
-      if (!importantTokens.includes(t) && importantTokens.length < 8) importantTokens.push(t);
-    });
-
-    return importantTokens.slice(0, 8).sort().join("|");
-  }
-
-  function dedupeGrouped(rows) {
-    const groups = {};
-
-    rows.forEach(row => {
-      const key = articleEventKey(row) || (row.title + "|" + row.domain + "|" + row.priority);
-      if (!groups[key]) {
-        groups[key] = {
-          id: row.id,
-          priority: row.priority,
-          score: row.score,
-          title: row.title,
-          entities: row.entities.slice(),
-          categories: row.categories.slice(),
-          matches: JSON.parse(JSON.stringify(row.matches)),
-          sourceLabel: row.sourceLabel,
-          reason: row.reason,
-          url: row.url,
-          domain: row.domain,
-          excerpt: row.excerpt,
-          raw: row.raw,
-          sourceCount: 1,
-          sourceType: row.sourceType,
-          origin: row.origin
+      function splitHeaderBody(raw) {
+        const match = raw.match(/\r?\n\r?\n/);
+        if (!match) {
+          return { headerText: raw, bodyText: "" };
+        }
+        const idx = match.index;
+        return {
+          headerText: raw.slice(0, idx),
+          bodyText: raw.slice(idx + match[0].length)
         };
-      } else {
-        const g = groups[key];
-        g.score = Math.max(g.score, row.score);
-        g.sourceCount += 1;
-
-        if (row.title.length > g.title.length) g.title = row.title;
-        if (row.excerpt.length > g.excerpt.length) g.excerpt = row.excerpt;
-        if (!g.url && row.url) g.url = row.url;
-        if (!g.domain && row.domain) g.domain = row.domain;
-
-        g.categories = Array.from(new Set(g.categories.concat(row.categories)));
-        g.entities = Array.from(new Set(g.entities.concat(row.entities)));
-
-        Object.keys(row.matches).forEach(cat => {
-          if (!g.matches[cat]) g.matches[cat] = [];
-          g.matches[cat] = Array.from(new Set(g.matches[cat].concat(row.matches[cat])));
-        });
       }
-    });
 
-    return Object.values(groups).map(row => {
-      row.priority = priority(row.score, row.categories);
-      if (row.sourceCount > 1) {
-        row.reason += " Duplicate story grouped (" + row.sourceCount + " sources).";
+      function parseHeaders(headerText) {
+        const headers = {};
+        const lines = String(headerText || "").split(/\r?\n/);
+        let current = null;
+
+        for (const line of lines) {
+          if (/^\s/.test(line) && current) {
+            headers[current] += " " + line.trim();
+            continue;
+          }
+          const idx = line.indexOf(":");
+          if (idx === -1) continue;
+          current = line.slice(0, idx).trim().toLowerCase();
+          headers[current] = line.slice(idx + 1).trim();
+        }
+        return headers;
       }
-      return row;
-    });
-  }
 
-  function renderResults(results) {
-    el.shownCount.textContent = String(results.length);
-    el.parsedCount.textContent = String(parsedChunkCount);
+      function parseContentType(contentType) {
+        const raw = String(contentType || "");
+        const parts = raw.split(";").map(x => x.trim());
+        const mimeType = (parts[0] || "text/plain").toLowerCase();
+        const params = {};
 
-    if (!results.length) {
-      el.results.innerHTML = '<div class="empty">No relevant credit items found.</div>';
-      return;
-    }
+        for (let i = 1; i < parts.length; i++) {
+          const eq = parts[i].indexOf("=");
+          if (eq === -1) continue;
+          const key = parts[i].slice(0, eq).trim().toLowerCase();
+          let value = parts[i].slice(eq + 1).trim();
+          value = value.replace(/^"(.*)"$/, "$1");
+          params[key] = value;
+        }
 
-    el.results.innerHTML = results.map(r => {
-      const chips = Object.keys(r.matches)
-        .flatMap(cat => r.matches[cat].slice(0, 10).map(hit =>
-          '<span class="chip" title="' + escapeHtml(cat) + '">' + escapeHtml(hit) + '</span>'
-        ))
-        .join("");
+        return { mimeType, params };
+      }
 
-      const rawBlock = expandedRawId === r.id
-        ? '<pre class="raw">' + escapeHtml(r.raw) + '</pre>'
-        : '';
+      function splitMultipartBody(bodyText, boundary) {
+        const marker = "--" + boundary;
+        const endMarker = marker + "--";
+        const lines = String(bodyText || "").split(/\r?\n/);
+        const parts = [];
+        let current = [];
+        let within = false;
 
-      const urlLink = r.url
-        ? '<a href="' + escapeHtml(r.url) + '" target="_blank" rel="noreferrer">Open source</a>'
-        : '';
+        for (const line of lines) {
+          if (line === marker) {
+            if (within && current.length) {
+              parts.push(current.join("\n"));
+              current = [];
+            }
+            within = true;
+            continue;
+          }
+          if (line === endMarker) {
+            if (within && current.length) {
+              parts.push(current.join("\n"));
+            }
+            break;
+          }
+          if (within) {
+            current.push(line);
+          }
+        }
+        return parts;
+      }
 
-      return '' +
-        '<div class="result-card">' +
-          '<div class="badges">' +
-            '<span class="badge ' + badgeClass(r.priority) + '">' + escapeHtml(r.priority) + '</span>' +
-            '<span class="badge badge-neutral">Score ' + r.score + '</span>' +
-            '<span class="badge badge-neutral">' + escapeHtml(r.sourceLabel) + '</span>' +
-            (r.domain ? '<span class="badge badge-neutral">' + escapeHtml(r.domain) + '</span>' : '') +
-            (r.sourceType ? '<span class="badge badge-neutral">' + escapeHtml(r.sourceType) + '</span>' : '') +
-          '</div>' +
-          '<div class="title">' + escapeHtml(r.title) + '</div>' +
-          '<div class="reason">' + escapeHtml(r.reason) + '</div>' +
-          '<div class="excerpt">' + escapeHtml(r.excerpt) + '</div>' +
-          '<div class="meta">' +
-            '<div><strong>Entities:</strong> ' + (r.entities.length ? escapeHtml(r.entities.join(", ")) : "None") + '</div>' +
-            '<div><strong>Categories:</strong> ' + (r.categories.length ? escapeHtml(r.categories.join(", ")) : "None") + '</div>' +
-            '<div><strong>Origin:</strong> ' + escapeHtml(r.origin || "Unknown") + '</div>' +
-            '<div><strong>Source type:</strong> ' + escapeHtml(r.sourceType || "Unknown") + '</div>' +
-          '</div>' +
-          '<div class="chips">' + chips + '</div>' +
-          '<div class="links">' +
-            urlLink +
-            ' <button data-raw-toggle="' + r.id + '">' + (expandedRawId === r.id ? "Hide raw text" : "Show raw text") + '</button>' +
-          '</div>' +
-          rawBlock +
-        '</div>';
-    }).join("");
+      function decodePartBody(bodyText, encoding) {
+        const enc = String(encoding || "").toLowerCase();
+        if (enc.includes("quoted-printable")) {
+          return decodeQuotedPrintable(bodyText);
+        }
+        if (enc.includes("base64")) {
+          return decodeBase64Text(bodyText);
+        }
+        return bodyText;
+      }
 
-    Array.from(el.results.querySelectorAll("[data-raw-toggle]")).forEach(btn => {
-      btn.addEventListener("click", function () {
-        const id = Number(this.getAttribute("data-raw-toggle"));
-        expandedRawId = expandedRawId === id ? null : id;
-        renderResults(lastResults);
-      });
-    });
-  }
+      function parseEmlRecursive(rawPart, depth = 0) {
+        const { headerText, bodyText } = splitHeaderBody(rawPart);
+        const headers = parseHeaders(headerText);
+        const contentType = parseContentType(headers["content-type"]);
+        const encoding = headers["content-transfer-encoding"] || "";
+        const disposition = headers["content-disposition"] || "";
+        const filenameMatch = disposition.match(/filename="?([^";]+)"?/i) || (headers["content-type"] || "").match(/name="?([^";]+)"?/i);
+        const filename = filenameMatch ? filenameMatch[1] : "";
 
-  function updateSummary(results) {
-    const counts = {
-      "High": 0,
-      "Medium": 0,
-      "Low": 0,
-      "Positive / Monitor": 0
-    };
+        const result = {
+          plain: "",
+          html: "",
+          attachments: []
+        };
 
-    results.forEach(r => {
-      if (counts[r.priority] !== undefined) counts[r.priority]++;
-    });
+        if (contentType.mimeType.startsWith("multipart/")) {
+          const boundary = contentType.params.boundary;
+          if (!boundary) return result;
+          const parts = splitMultipartBody(bodyText, boundary);
+          for (const part of parts) {
+            const child = parseEmlRecursive(part, depth + 1);
+            if (child.plain) result.plain += "\n" + child.plain;
+            if (child.html) result.html += "\n" + child.html;
+            if (child.attachments.length) result.attachments.push(...child.attachments);
+          }
+          return result;
+        }
 
-    el.countHigh.textContent = String(counts["High"]);
-    el.countMedium.textContent = String(counts["Medium"]);
-    el.countLow.textContent = String(counts["Low"]);
-    el.countPositive.textContent = String(counts["Positive / Monitor"]);
-  }
+        const decoded = decodePartBody(bodyText, encoding);
+        const mime = contentType.mimeType;
 
-  function renderSourceList() {
-    if (!importedChunks.length) {
-      el.sourceList.innerHTML = '<div class="small">No files imported yet.</div>';
-      return;
-    }
+        if (filename) {
+          result.attachments.push({
+            filename,
+            mimeType: mime,
+            text: mime.includes("text/html") ? cleanEmailText(decoded) : normalize(decoded)
+          });
+          return result;
+        }
 
-    el.sourceList.innerHTML = importedChunks.map((chunk, idx) => {
-      return (
-        '<div class="source-item">' +
-          '<div class="source-title">' + escapeHtml(chunk.title || chunk.sourceName || ("Imported " + (idx + 1))) + '</div>' +
-          '<div class="source-meta">' +
-            escapeHtml(chunk.sourceType || "file") +
-            (chunk.source ? ' • ' + escapeHtml(chunk.source) : '') +
-            (chunk.metaDate ? ' • ' + escapeHtml(chunk.metaDate) : '') +
-          '</div>' +
-        '</div>'
-      );
-    }).join("");
-  }
+        if (mime.includes("text/plain")) {
+          result.plain = normalize(decoded);
+          return result;
+        }
 
-  function badgeClass(priorityValue) {
-    if (priorityValue === "High") return "priority-high";
-    if (priorityValue === "Medium") return "priority-medium";
-    if (priorityValue === "Low") return "priority-low";
-    if (priorityValue === "Positive / Monitor") return "priority-positive";
-    return "badge-neutral";
-  }
+        if (mime.includes("text/html")) {
+          result.html = cleanEmailText(decoded);
+          return result;
+        }
 
-  function getAllInputChunks() {
-    const chunks = [];
+        return result;
+      }
 
-    const pasted = normalize(el.alertText.value);
-    if (pasted) {
-      chunks.push({
-        sourceType: "pasted",
-        sourceName: "Pasted text",
-        title: "Pasted alert text",
-        source: "Manual input",
-        text: pasted,
-        html: "",
-        url: ""
-      });
-    }
+      function parseEml(text) {
+        const { headerText, bodyText } = splitHeaderBody(text);
+        const headers = parseHeaders(headerText);
 
-    importedChunks.forEach(x => chunks.push(x));
-    return chunks;
-  }
+        let plain = "";
+        let html = "";
+        let attachments = [];
 
-  function analyzeAllInputs(watchlistText, minPriority, categoryFilter, query, sortBy) {
-    const inputChunks = getAllInputChunks();
-    const items = buildAnalysisItems(inputChunks);
-    parsedChunkCount = items.length;
+        const rootType = parseContentType(headers["content-type"]);
+        const rootEncoding = headers["content-transfer-encoding"] || "";
 
-    const rows = items
-      .filter(item => !isLowValueArticle(item))
-      .map((item, idx) => {
-        const scored = scoreArticle(item, watchlistText);
-        const pri = priority(scored.score, scored.categories);
+        if (rootType.mimeType.startsWith("multipart/")) {
+          const recursive = parseEmlRecursive(text);
+          plain = recursive.plain;
+          html = recursive.html;
+          attachments = recursive.attachments;
+        } else {
+          const decoded = decodePartBody(bodyText, rootEncoding);
+          if (rootType.mimeType.includes("text/html")) {
+            html = cleanEmailText(decoded);
+          } else {
+            plain = normalize(decoded);
+          }
+        }
+
+        const body = cleanEmailText(plain || html || bodyText || "");
 
         return {
-          id: idx + 1,
-          priority: pri,
-          score: scored.score,
-          title: item.title,
-          entities: scored.entities,
-          categories: scored.categories,
-          matches: scored.matches,
-          sourceLabel: scored.sourceLabel,
-          reason: riskReason({ categories: scored.categories }),
-          url: item.url || "",
-          domain: item.url ? domainFromUrl(item.url) : "",
-          excerpt: item.snippet || excerpt(item.raw, 350),
-          raw: item.raw,
-          sourceType: item.rawMeta?.sourceType || item.kind,
-          origin: item.rawMeta?.sourceName || item.source || "Imported source"
+          subject: headers["subject"] || "Untitled email",
+          from: headers["from"] || "",
+          to: headers["to"] || "",
+          date: headers["date"] || "",
+          body,
+          attachments,
+          headers
         };
-      });
+      }
 
-    let deduped = dedupeGrouped(rows)
-      .filter(x => PRIORITY_RANK[x.priority] >= PRIORITY_RANK[minPriority])
-      .filter(x => categoryFilter === "All categories" || x.categories.includes(categoryFilter));
+      function escapeRegExp(s) {
+        return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      }
 
-    const q = String(query || "").toLowerCase().trim();
-    if (q) {
-      deduped = deduped.filter(r =>
-        [
-          r.title, r.excerpt, r.priority, r.reason,
-          r.categories.join(" "), r.entities.join(" "),
-          r.domain, JSON.stringify(r.matches), r.sourceType, r.origin
-        ].join(" ").toLowerCase().includes(q)
-      );
-    }
+      function termRegex(term) {
+        const escaped = escapeRegExp(String(term).trim());
+        return new RegExp("(^|[^a-zA-Z0-9])" + escaped + "([^a-zA-Z0-9]|$)", "i");
+      }
 
-    if (sortBy === "score") {
-      deduped.sort((a, b) => b.score - a.score);
-    } else if (sortBy === "title") {
-      deduped.sort((a, b) => a.title.localeCompare(b.title));
-    } else {
-      deduped.sort((a, b) => (PRIORITY_RANK[b.priority] - PRIORITY_RANK[a.priority]) || (b.score - a.score));
-    }
+      function extractUrls(text) {
+        return String(text || "").match(/https?:\/\/[^\s)\]}"']+/g) || [];
+      }
 
-    return deduped;
-  }
+      function domainFromUrl(url) {
+        try {
+          return new URL(url).hostname.replace(/^www\./, "");
+        } catch {
+          return "";
+        }
+      }
 
-  function runAnalysis() {
-    try {
-      persistWatchlist();
-      setStatus("", "");
-      lastResults = analyzeAllInputs(
-        el.watchlistText.value,
-        el.minPriority.value,
-        el.categoryFilter.value,
-        el.searchBox.value,
-        el.sortBy.value
-      );
-      updateSummary(lastResults);
-      renderResults(lastResults);
-      setStatus(
-        "Parsed " + parsedChunkCount + " item(s). Kept " + lastResults.length + " credit-relevant result(s).",
-        "ok"
-      );
-    } catch (err) {
-      console.error(err);
-      setStatus("Analysis failed: " + err.message, "error");
-    }
-  }
+      function excerpt(text, n) {
+        const clean = String(text || "").replace(/\s+/g, " ").trim();
+        if (clean.length <= n) return clean;
+        return clean.slice(0, n).replace(/\s+\S*$/, "") + "...";
+      }
 
-  function downloadFile(filename, content, type) {
-    const blob = new Blob([content], { type });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }
+      function detectEntities(text, watchlistText) {
+        const lower = String(text || "").toLowerCase();
+        const entities = [];
 
-  function toCsv(rows) {
-    const headers = [
-      "priority","score","reason","title","entities","categories",
-      "matched_keywords","source_quality","origin","source_type","url","source_domain","excerpt"
-    ];
+        String(watchlistText || "")
+          .split(/\n|,|;/)
+          .map(x => x.trim())
+          .filter(Boolean)
+          .forEach(entity => {
+            if (lower.includes(entity.toLowerCase())) entities.push(entity);
+          });
 
-    function esc(value) {
-      return '"' + String(value == null ? "" : value).replace(/"/g, '""') + '"';
-    }
+        const patterns = [
+          /\bCity of [A-Z][A-Za-z .'-]+/g,
+          /\bTown of [A-Z][A-Za-z .'-]+/g,
+          /\b[A-Z][A-Za-z .'-]+ County\b/g,
+          /\b[A-Z][A-Za-z .'-]+ School District\b/g,
+          /\b[A-Z][A-Za-z .'-]+ Water Authority\b/g,
+          /\b[A-Z][A-Za-z .'-]+ Utility District\b/g,
+          /\b[A-Z][A-Za-z .'-]+ Hospital\b/g,
+          /\bGroup 1 Automotive\b/gi,
+          /\bLithia UK\b/gi
+        ];
 
-    const lines = rows.map(r => [
-      r.priority,
-      r.score,
-      r.reason,
-      r.title,
-      r.entities.join("; "),
-      r.categories.join("; "),
-      JSON.stringify(r.matches),
-      r.sourceLabel,
-      r.origin,
-      r.sourceType,
-      r.url,
-      r.domain,
-      r.excerpt
-    ].map(esc).join(","));
+        patterns.forEach(p => {
+          const matches = String(text || "").match(p) || [];
+          matches.forEach(x => entities.push(x.trim().replace(/[.,;:]$/, "")));
+        });
 
-    return [headers.join(",")].concat(lines).join("\n");
-  }
+        return Array.from(new Set(entities.map(x => x.trim())));
+      }
 
-  function toMarkdown(rows) {
-    const counts = rows.reduce((acc, r) => {
-      acc[r.priority] = (acc[r.priority] || 0) + 1;
-      return acc;
-    }, {});
+      function extractGoogleAlertArticles(rawText, fallbackMeta = {}) {
+        const text = cleanEmailText(rawText);
+        const articles = [];
 
-    return `# Tyler Secor Intern Project
+        const linkRegex = /\[([^\]]+?)\]\((https?:\/\/[^\s)]+)\)/g;
+        const matches = Array.from(text.matchAll(linkRegex));
+
+        if (matches.length) {
+          for (let i = 0; i < matches.length; i++) {
+            const current = matches[i];
+            const next = matches[i + 1];
+
+            const title = current[1].trim();
+            const url = current[2].trim();
+
+            const start = current.index + current[0].length;
+            const end = next ? next.index : text.length;
+            const between = text.slice(start, end).trim();
+
+            const lines = between.split("\n").map(x => x.trim()).filter(Boolean);
+            const source = lines[0] || fallbackMeta.source || "";
+            const snippet = lines.slice(1).join(" ").trim();
+
+            articles.push({
+              kind: "article",
+              title: title.replace(/\s+-\s+(Facebook|Twitter)\s*$/i, "").trim(),
+              source,
+              snippet,
+              url,
+              raw: [title, source, snippet, url].filter(Boolean).join("\n"),
+              rawMeta: fallbackMeta
+            });
+          }
+        }
+
+        if (!articles.length) {
+          const blocks = text.split(/\n\s*\n/).map(x => x.trim()).filter(x => x.length > 50);
+
+          blocks.forEach(block => {
+            const urls = extractUrls(block);
+            if (!urls.length) return;
+
+            const lines = block.split("\n").map(x => x.trim()).filter(Boolean);
+            const title = lines[0] || fallbackMeta.title || "Untitled article";
+            const source = lines[1] || fallbackMeta.source || "";
+            const snippet = lines.slice(2).join(" ");
+
+            articles.push({
+              kind: "article",
+              title,
+              source,
+              snippet,
+              url: urls[0],
+              raw: block,
+              rawMeta: fallbackMeta
+            });
+          });
+        }
+
+        return articles.filter(a => a.title && (a.url || a.raw));
+      }
+
+      function looksLikeGoogleAlertText(text) {
+        const t = String(text || "");
+        return /\[([^\]]+?)\]\((https?:\/\/[^\s)]+)\)/.test(t) ||
+               /(google alert|see more results|manage your alerts)/i.test(t) ||
+               (extractUrls(t).length >= 2);
+      }
+
+      function buildAnalysisItems(chunks) {
+        const items = [];
+
+        chunks.forEach(chunk => {
+          const text = chunk.text || "";
+
+          if (looksLikeGoogleAlertText(text)) {
+            const found = extractGoogleAlertArticles(text, {
+              source: chunk.source || "",
+              title: chunk.title || "",
+              url: chunk.url || "",
+              sourceName: chunk.sourceName || ""
+            });
+
+            if (found.length) {
+              items.push(...found);
+              return;
+            }
+          }
+
+          const cleaned = cleanEmailText(text);
+          if (cleaned) {
+            items.push({
+              kind: "document",
+              title: chunk.title || chunk.sourceName || "Imported document",
+              source: chunk.source || chunk.sourceName || "Imported source",
+              snippet: excerpt(cleaned, 700),
+              url: chunk.url || "",
+              raw: cleaned,
+              rawMeta: chunk
+            });
+          }
+        });
+
+        return items;
+      }
+
+      function isLowValueArticle(article) {
+        const combined = [article.title, article.source, article.snippet, article.raw].join(" ").toLowerCase();
+
+        if (GOOGLE_NOISE_PATTERNS.some(p => p.test(combined))) return true;
+        if (LOW_VALUE_PATTERNS.some(p => p.test(combined))) return true;
+
+        if (article.kind === "article") {
+          if (SOURCE_NOISE_PATTERNS.some(p => p.test(article.source)) || SOURCE_NOISE_PATTERNS.some(p => p.test(article.url))) {
+            const hasRealCreditSignal =
+              /(lawsuit|investigation|fraud|subpoena|default|bankruptcy|liquidity|downgrade|layoffs|closure|asset sale|divestiture|acquisition|debt|refinancing|credit facility|ftc|doj|sec)/i
+                .test(combined);
+            if (!hasRealCreditSignal) return true;
+          }
+        }
+
+        return false;
+      }
+
+      function scoreArticle(article, watchlistText) {
+        const text = [article.title, article.source, article.snippet, article.raw].join(" ");
+        let score = 0;
+        const categories = [];
+        const matches = {};
+
+        Object.keys(KEYWORD_LIBRARY).forEach(category => {
+          const config = KEYWORD_LIBRARY[category];
+          const hits = [];
+          config.terms.forEach(term => {
+            if (termRegex(term).test(text)) hits.push(term);
+          });
+
+          if (hits.length) {
+            categories.push(category);
+            matches[category] = Array.from(new Set(hits));
+            score += Number(config.severity || 5) + Math.min(hits.length, 6);
+          }
+        });
+
+        const domain = article.url ? domainFromUrl(article.url) : "";
+        let sourceLabel = article.source || domain || "Standard source";
+
+        SOURCE_WEIGHTS.forEach(src => {
+          if (src.pattern.test(domain) || src.pattern.test(article.source) || src.pattern.test(text)) {
+            score += src.boost;
+            sourceLabel = src.label;
+          }
+        });
+
+        const entities = detectEntities(text, watchlistText);
+        if (entities.length > 0) score += 3;
+        if (categories.length >= 2) score += 2;
+
+        return { score, categories, matches, entities, sourceLabel };
+      }
+
+      function priority(score, categories) {
+        const severe = [
+          "Bankruptcy & Insolvency",
+          "Credit Deterioration & Default",
+          "Legal & Regulatory Issues"
+        ];
+
+        if (categories.includes("Bankruptcy & Insolvency")) return "High";
+        if (categories.some(c => severe.includes(c)) && score >= 12) return "High";
+        if (score >= 16) return "High";
+        if (score >= 9) return "Medium";
+        if (score >= 4) return "Low";
+        if (score < 0) return "Positive / Monitor";
+        return "Ignore";
+      }
+
+      function riskReason(row) {
+        if (row.categories.includes("Bankruptcy & Insolvency")) return "Bankruptcy or insolvency language detected.";
+        if (row.categories.includes("Credit Deterioration & Default")) return "Default, downgrade, covenant, liquidity, or payment stress detected.";
+        if (row.categories.includes("Legal & Regulatory Issues")) return "Legal, FTC/DOJ/SEC, compliance, or investigation risk detected.";
+        if (row.categories.includes("Corporate Actions")) return "Asset sale, divestiture, acquisition, or strategic transaction detected.";
+        if (row.categories.includes("Financing & Debt Activity")) return "Debt, refinancing, credit agreement, or funding activity detected.";
+        if (row.categories.includes("Operational Risk Indicators")) return "Operational disruption, closures, layoffs, or cyber risk detected.";
+        if (row.categories.includes("Positive Credit Signals")) return "Possible positive credit signal.";
+        return "Potentially relevant for credit review.";
+      }
+
+      function normalizeTokens(text) {
+        return String(text || "")
+          .toLowerCase()
+          .replace(/group 1 automotive/g, "group1")
+          .replace(/lithia uk/g, "lithiauk")
+          .replace(/jaguar land rover/g, "jlr")
+          .replace(/acquires?|acquired|acquisition/g, "acquire")
+          .replace(/sells?|sold|sale|dispose|divestiture/g, "sell")
+          .replace(/dealerships?/g, "dealer")
+          .replace(/sites?/g, "site")
+          .replace(/[^a-z0-9\s]/g, " ")
+          .split(/\s+/)
+          .filter(Boolean)
+          .filter(t => t.length > 2)
+          .filter(t => !["the","and","for","with","from","into","over","here","are","all","this","that","has","have","will","its","inc","news","group"].includes(t));
+      }
+
+      function articleEventKey(row) {
+        const text = [row.title, row.excerpt, row.entities.join(" ")].join(" ");
+        const tokens = normalizeTokens(text);
+
+        const importantTokens = [];
+        const mustKeep = ["group1","lithiauk","jlr","ftc","deceptive","pricing","lawsuit","investigation","sell","acquire","dealer","site","asset","divestiture","regulatory"];
+
+        mustKeep.forEach(t => {
+          if (tokens.includes(t)) importantTokens.push(t);
+        });
+
+        tokens.forEach(t => {
+          if (!importantTokens.includes(t) && importantTokens.length < 6) importantTokens.push(t);
+        });
+
+        return importantTokens.slice(0, 6).sort().join("|");
+      }
+
+      function dedupeGrouped(rows) {
+        const groups = {};
+
+        rows.forEach(row => {
+          const key = articleEventKey(row) || (row.title + "|" + row.domain + "|" + row.priority);
+          if (!groups[key]) {
+            groups[key] = {
+              id: row.id,
+              priority: row.priority,
+              score: row.score,
+              title: row.title,
+              entities: row.entities.slice(),
+              categories: row.categories.slice(),
+              matches: JSON.parse(JSON.stringify(row.matches)),
+              sourceLabel: row.sourceLabel,
+              reason: row.reason,
+              url: row.url,
+              domain: row.domain,
+              excerpt: row.excerpt,
+              raw: row.raw,
+              sourceCount: 1,
+              sourceType: row.sourceType,
+              origin: row.origin
+            };
+          } else {
+            const g = groups[key];
+            g.score = Math.max(g.score, row.score);
+            g.sourceCount += 1;
+
+            if (row.title.length > g.title.length) g.title = row.title;
+            if (row.excerpt.length > g.excerpt.length) g.excerpt = row.excerpt;
+            if (!g.url && row.url) g.url = row.url;
+            if (!g.domain && row.domain) g.domain = row.domain;
+
+            g.categories = Array.from(new Set(g.categories.concat(row.categories)));
+            g.entities = Array.from(new Set(g.entities.concat(row.entities)));
+
+            Object.keys(row.matches).forEach(cat => {
+              if (!g.matches[cat]) g.matches[cat] = [];
+              g.matches[cat] = Array.from(new Set(g.matches[cat].concat(row.matches[cat])));
+            });
+          }
+        });
+
+        return Object.values(groups).map(row => {
+          row.priority = priority(row.score, row.categories);
+          if (row.sourceCount > 1) {
+            row.reason += " Duplicate story grouped (" + row.sourceCount + " sources).";
+          }
+          return row;
+        });
+      }
+
+      function getAllInputChunks() {
+        const chunks = [];
+
+        const pasted = normalize(el.alertText.value);
+        if (pasted) {
+          chunks.push({
+            sourceType: "pasted",
+            sourceName: "Pasted text",
+            title: "Pasted alert text",
+            source: "Manual input",
+            text: pasted,
+            url: ""
+          });
+        }
+
+        importedChunks.forEach(x => chunks.push(x));
+        return chunks;
+      }
+
+      function analyzeAllInputs(watchlistText, minPriority, categoryFilter, query, sortBy) {
+        const inputChunks = getAllInputChunks();
+        const items = buildAnalysisItems(inputChunks);
+        parsedChunkCount = items.length;
+
+        const rows = items
+          .filter(item => !isLowValueArticle(item))
+          .map((item, idx) => {
+            const scored = scoreArticle(item, watchlistText);
+            const pri = priority(scored.score, scored.categories);
+
+            return {
+              id: idx + 1,
+              priority: pri,
+              score: scored.score,
+              title: item.title,
+              entities: scored.entities,
+              categories: scored.categories,
+              matches: scored.matches,
+              sourceLabel: scored.sourceLabel,
+              reason: riskReason({ categories: scored.categories }),
+              url: item.url || "",
+              domain: item.url ? domainFromUrl(item.url) : "",
+              excerpt: item.snippet || excerpt(item.raw, 350),
+              raw: item.raw,
+              sourceType: item.rawMeta?.sourceType || item.kind,
+              origin: item.rawMeta?.sourceName || item.source || "Imported source"
+            };
+          });
+
+        let deduped = dedupeGrouped(rows)
+          .filter(x => PRIORITY_RANK[x.priority] >= PRIORITY_RANK[minPriority])
+          .filter(x => categoryFilter === "All categories" || x.categories.includes(categoryFilter));
+
+        const q = String(query || "").toLowerCase().trim();
+        if (q) {
+          deduped = deduped.filter(r =>
+            [
+              r.title, r.excerpt, r.priority, r.reason,
+              r.categories.join(" "), r.entities.join(" "),
+              r.domain, JSON.stringify(r.matches), r.sourceType, r.origin
+            ].join(" ").toLowerCase().includes(q)
+          );
+        }
+
+        if (sortBy === "score") {
+          deduped.sort((a, b) => b.score - a.score);
+        } else if (sortBy === "title") {
+          deduped.sort((a, b) => a.title.localeCompare(b.title));
+        } else {
+          deduped.sort((a, b) => (PRIORITY_RANK[b.priority] - PRIORITY_RANK[a.priority]) || (b.score - a.score));
+        }
+
+        return deduped;
+      }
+
+      function badgeClass(priorityValue) {
+        if (priorityValue === "High") return "priority-high";
+        if (priorityValue === "Medium") return "priority-medium";
+        if (priorityValue === "Low") return "priority-low";
+        if (priorityValue === "Positive / Monitor") return "priority-positive";
+        return "badge-neutral";
+      }
+
+      function renderResults(results) {
+        el.shownCount.textContent = String(results.length);
+        el.parsedCount.textContent = String(parsedChunkCount);
+
+        if (!results.length) {
+          el.results.innerHTML = '<div class="empty">No relevant credit items found.</div>';
+          return;
+        }
+
+        el.results.innerHTML = results.map(r => {
+          const chips = Object.keys(r.matches)
+            .flatMap(cat => r.matches[cat].slice(0, 10).map(hit =>
+              '<span class="chip" title="' + escapeHtml(cat) + '">' + escapeHtml(hit) + '</span>'
+            ))
+            .join("");
+
+          const rawBlock = expandedRawId === r.id
+            ? '<pre class="raw">' + escapeHtml(r.raw) + '</pre>'
+            : '';
+
+          const urlLink = r.url
+            ? '<a href="' + escapeHtml(r.url) + '" target="_blank" rel="noreferrer">Open source</a>'
+            : '';
+
+          return '' +
+            '<div class="result-card">' +
+              '<div class="badges">' +
+                '<span class="badge ' + badgeClass(r.priority) + '">' + escapeHtml(r.priority) + '</span>' +
+                '<span class="badge badge-neutral">Score ' + r.score + '</span>' +
+                '<span class="badge badge-neutral">' + escapeHtml(r.sourceLabel) + '</span>' +
+                (r.domain ? '<span class="badge badge-neutral">' + escapeHtml(r.domain) + '</span>' : '') +
+                (r.sourceType ? '<span class="badge badge-neutral">' + escapeHtml(r.sourceType) + '</span>' : '') +
+              '</div>' +
+              '<div class="title">' + escapeHtml(r.title) + '</div>' +
+              '<div class="reason">' + escapeHtml(r.reason) + '</div>' +
+              '<div class="excerpt">' + escapeHtml(r.excerpt) + '</div>' +
+              '<div class="meta">' +
+                '<div><strong>Entities:</strong> ' + (r.entities.length ? escapeHtml(r.entities.join(", ")) : "None") + '</div>' +
+                '<div><strong>Categories:</strong> ' + (r.categories.length ? escapeHtml(r.categories.join(", ")) : "None") + '</div>' +
+                '<div><strong>Origin:</strong> ' + escapeHtml(r.origin || "Unknown") + '</div>' +
+                '<div><strong>Source type:</strong> ' + escapeHtml(r.sourceType || "Unknown") + '</div>' +
+              '</div>' +
+              '<div class="chips">' + chips + '</div>' +
+              '<div class="links">' +
+                urlLink +
+                ' <button data-raw-toggle="' + r.id + '">' + (expandedRawId === r.id ? 'Hide raw text' : 'Show raw text') + '</button>' +
+              '</div>' +
+              rawBlock +
+            '</div>';
+        }).join("");
+
+        Array.from(el.results.querySelectorAll("[data-raw-toggle]")).forEach(btn => {
+          btn.addEventListener("click", function () {
+            const id = Number(this.getAttribute("data-raw-toggle"));
+            expandedRawId = expandedRawId === id ? null : id;
+            renderResults(lastResults);
+          });
+        });
+      }
+
+      function updateSummary(results) {
+        const counts = {
+          "High": 0,
+          "Medium": 0,
+          "Low": 0,
+          "Positive / Monitor": 0
+        };
+
+        results.forEach(r => {
+          if (counts[r.priority] !== undefined) counts[r.priority]++;
+        });
+
+        el.countHigh.textContent = String(counts["High"]);
+        el.countMedium.textContent = String(counts["Medium"]);
+        el.countLow.textContent = String(counts["Low"]);
+        el.countPositive.textContent = String(counts["Positive / Monitor"]);
+      }
+
+      function renderSourceList() {
+        if (!importedChunks.length) {
+          el.sourceList.innerHTML = '<div class="small">No files imported yet.</div>';
+          return;
+        }
+
+        el.sourceList.innerHTML = importedChunks.map((chunk, idx) => {
+          return (
+            '<div class="source-item">' +
+              '<div class="source-title">' + escapeHtml(chunk.title || chunk.sourceName || ("Imported " + (idx + 1))) + '</div>' +
+              '<div class="source-meta">' +
+                escapeHtml(chunk.sourceType || "file") +
+                (chunk.source ? ' • ' + escapeHtml(chunk.source) : '') +
+                (chunk.metaDate ? ' • ' + escapeHtml(chunk.metaDate) : '') +
+              '</div>' +
+            '</div>'
+          );
+        }).join("");
+      }
+
+      function runAnalysis() {
+        try {
+          setStatus("", "");
+          lastResults = analyzeAllInputs(
+            el.watchlistText.value,
+            el.minPriority.value,
+            el.categoryFilter.value,
+            el.searchBox.value,
+            el.sortBy.value
+          );
+          updateSummary(lastResults);
+          renderResults(lastResults);
+          setStatus(
+            "Parsed " + parsedChunkCount + " item(s). Kept " + lastResults.length + " credit-relevant result(s).",
+            "ok"
+          );
+        } catch (err) {
+          console.error(err);
+          setStatus("Analysis failed: " + err.message, "error");
+        }
+      }
+
+      function toggleKeywordLibrary() {
+        el.keywordLibraryWrap.style.display =
+          el.keywordLibraryWrap.style.display === "none" ? "block" : "none";
+      }
+
+      function applyCustomKeywords() {
+        try {
+          const parsed = JSON.parse(el.keywordLibrary.value);
+
+          Object.keys(parsed).forEach(cat => {
+            if (!parsed[cat].terms || !Array.isArray(parsed[cat].terms)) {
+              throw new Error('Category "' + cat + '" must have a terms array');
+            }
+          });
+
+          Object.keys(KEYWORD_LIBRARY).forEach(k => delete KEYWORD_LIBRARY[k]);
+          Object.assign(KEYWORD_LIBRARY, parsed);
+
+          populateCategoryFilter();
+          fillKeywordLibrary();
+          setStatus("Keyword library updated.", "ok");
+        } catch (err) {
+          console.error(err);
+          setStatus("Invalid keyword library JSON.", "error");
+        }
+      }
+
+      function downloadFile(filename, content, type) {
+        const blob = new Blob([content], { type });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+
+      function toCsv(rows) {
+        const headers = [
+          "priority","score","reason","title","entities","categories",
+          "matched_keywords","source_quality","origin","source_type","url","source_domain","excerpt"
+        ];
+
+        function esc(value) {
+          return '"' + String(value == null ? "" : value).replace(/"/g, '""') + '"';
+        }
+
+        const lines = rows.map(r => [
+          r.priority,
+          r.score,
+          r.reason,
+          r.title,
+          r.entities.join("; "),
+          r.categories.join("; "),
+          JSON.stringify(r.matches),
+          r.sourceLabel,
+          r.origin,
+          r.sourceType,
+          r.url,
+          r.domain,
+          r.excerpt
+        ].map(esc).join(","));
+
+        return [headers.join(",")].concat(lines).join("\n");
+      }
+
+      function toMarkdown(rows) {
+        const counts = rows.reduce((acc, r) => {
+          acc[r.priority] = (acc[r.priority] || 0) + 1;
+          return acc;
+        }, {});
+
+        return `# Tyler Secor Intern Project
 
 Generated: ${new Date().toLocaleString()}
 
@@ -2488,238 +1689,303 @@ ${Object.entries(r.matches).map(([cat, hits]) => `- ${cat}: ${hits.join(", ")}`)
 Excerpt:
 ${r.excerpt}
 `).join("\n")}`;
-  }
+      }
 
-  function downloadCsv() {
-    if (!lastResults.length) {
-      alert("Run an analysis first.");
-      return;
-    }
-    downloadFile("credit_alert_results.csv", toCsv(lastResults), "text/csv;charset=utf-8;");
-  }
+      function downloadCsv() {
+        if (!lastResults.length) {
+          alert("Run an analysis first.");
+          return;
+        }
+        downloadFile("credit_alert_results.csv", toCsv(lastResults), "text/csv;charset=utf-8;");
+      }
 
-  function downloadJson() {
-    if (!lastResults.length) {
-      alert("Run an analysis first.");
-      return;
-    }
-    downloadFile("credit_alert_results.json", JSON.stringify(lastResults, null, 2), "application/json");
-  }
+      function downloadJson() {
+        if (!lastResults.length) {
+          alert("Run an analysis first.");
+          return;
+        }
+        downloadFile("credit_alert_results.json", JSON.stringify(lastResults, null, 2), "application/json");
+      }
 
-  function downloadMarkdown() {
-    if (!lastResults.length) {
-      alert("Run an analysis first.");
-      return;
-    }
-    downloadFile("credit_alert_report.md", toMarkdown(lastResults), "text/markdown;charset=utf-8;");
-  }
+      function downloadMarkdown() {
+        if (!lastResults.length) {
+          alert("Run an analysis first.");
+          return;
+        }
+        downloadFile("credit_alert_report.md", toMarkdown(lastResults), "text/markdown;charset=utf-8;");
+      }
 
-  function clearAllInputs() {
-    el.alertText.value = "";
-    el.watchlistText.value = "";
-    el.searchBox.value = "";
-    el.minPriority.value = "Low";
-    el.categoryFilter.value = "All categories";
-    el.sortBy.value = "priority";
-    el.fileInput.value = "";
-    expandedRawId = null;
-    lastResults = [];
-    parsedChunkCount = 0;
-    importedChunks = [];
-    setStatus("", "");
-    updateSummary([]);
-    renderResults([]);
-    renderSourceList();
-    el.shownCount.textContent = "0";
-    el.parsedCount.textContent = "0";
-    localStorage.removeItem(STORAGE_KEYS.watchlist);
-  }
+      function clearAllInputs() {
+        el.alertText.value = "";
+        el.watchlistText.value = "";
+        el.searchBox.value = "";
+        el.minPriority.value = "Low";
+        el.categoryFilter.value = "All categories";
+        el.sortBy.value = "priority";
+        el.fileInput.value = "";
+        expandedRawId = null;
+        lastResults = [];
+        parsedChunkCount = 0;
+        importedChunks = [];
+        setStatus("", "");
+        updateSummary([]);
+        renderResults([]);
+        renderSourceList();
+        el.shownCount.textContent = "0";
+        el.parsedCount.textContent = "0";
+      }
 
-  async function extractTextFromPdf(arrayBuffer) {
-    if (!window.pdfjsLib) throw new Error("PDF parser not loaded.");
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    let fullText = "";
+      function loadSample() {
+        el.watchlistText.value = [
+          "Group 1 Automotive",
+          "City of Decatur",
+          "Morgan County",
+          "Decatur Utilities",
+          "Sample Health System",
+          "Town of Ashford"
+        ].join("\n");
 
-    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-      const page = await pdf.getPage(pageNum);
-      const content = await page.getTextContent();
-      const pageText = content.items.map(item => item.str).join(" ");
-      fullText += pageText + "\n\n";
-    }
+        el.alertText.value = `
+[ lithia uk acquires three group 1 automotive sites - motor trader ](https://www.motortrader.com/example1)
+Motor Trader
+Lithia UK has acquired three retail sites from Group 1 Automotive. The deal will see sites in Derby, Chester and Preston transition into the new network.
 
-    return fullText.trim();
-  }
+[ lithia uk adds jlr dealerships acquired from group 1 automotive - am-online ](https://www.am-online.com/example2)
+AM-online
+Lithia UK has acquired three Jaguar Land Rover dealerships from Group 1 Automotive to expand its network.
 
-  async function extractTextFromDocx(arrayBuffer) {
-    if (!window.mammoth) throw new Error("DOCX parser not loaded.");
-    const result = await mammoth.extractRawText({ arrayBuffer });
-    return String(result.value || "").trim();
-  }
+[ here are all 97 car dealers the ftc threatened over deceptive pricing - the drive ](https://www.thedrive.com/example3)
+The Drive
+Group 1 Automotive appears in a list of dealers the FTC threatened over deceptive pricing.
 
-  async function parseUploadedFile(file) {
-    const name = file.name.toLowerCase();
+[ sample medical system faces liquidity pressures after weak volumes ](https://www.example.com/example5)
+Sample Wire
+Sample Health System reported declining cash flow, liquidity concerns, and reduced guidance following weak volumes.
 
-    if (file.size > 20 * 1024 * 1024) {
-      throw new Error(file.name + " is larger than 20MB.");
-    }
+[ o'reilly automotive compare against competitors - investing.com ](https://www.investing.com/example4)
+Investing.com
+Summary table and competitor comparison data including Group 1 Automotive.
+        `.trim();
 
-    if (name.endsWith(".txt") || name.endsWith(".md") || name.endsWith(".log") || name.endsWith(".csv")) {
-      return {
-        chunks: [{
-          sourceType: "local-file",
-          sourceName: file.name,
-          title: file.name,
-          source: "Local upload",
-          metaDate: "",
-          text: await file.text(),
-          html: "",
-          url: ""
-        }]
-      };
-    }
+        runAnalysis();
+      }
 
-    if (name.endsWith(".eml")) {
-      const raw = await file.text();
-      return parseEml(raw, file.name);
-    }
+      function populateCategoryFilter() {
+        const categories = ["All categories"].concat(Object.keys(KEYWORD_LIBRARY));
+        el.categoryFilter.innerHTML = categories
+          .map(c => '<option value="' + escapeHtml(c) + '">' + escapeHtml(c) + '</option>')
+          .join("");
+        el.categoryFilter.value = "All categories";
+      }
 
-    if (name.endsWith(".pdf")) {
-      const buffer = await file.arrayBuffer();
-      const text = await extractTextFromPdf(buffer);
-      return {
-        chunks: [{
-          sourceType: "local-file",
-          sourceName: file.name,
-          title: file.name,
-          source: "Local upload",
-          metaDate: "",
-          text,
-          html: "",
-          url: ""
-        }]
-      };
-    }
+      function fillKeywordLibrary() {
+        el.keywordLibrary.value = JSON.stringify(KEYWORD_LIBRARY, null, 2);
+        const count = Object.values(KEYWORD_LIBRARY).reduce((sum, cat) => sum + cat.terms.length, 0);
+        el.keywordCount.textContent = String(count);
+      }
 
-    if (name.endsWith(".docx")) {
-      const buffer = await file.arrayBuffer();
-      const text = await extractTextFromDocx(buffer);
-      return {
-        chunks: [{
-          sourceType: "local-file",
-          sourceName: file.name,
-          title: file.name,
-          source: "Local upload",
-          metaDate: "",
-          text,
-          html: "",
-          url: ""
-        }]
-      };
-    }
+      async function extractTextFromPdf(arrayBuffer) {
+        if (!window.pdfjsLib) throw new Error("PDF parser not loaded.");
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        let fullText = "";
 
-    throw new Error("Unsupported file type: " + file.name);
-  }
+        for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+          const page = await pdf.getPage(pageNum);
+          const content = await page.getTextContent();
+          const pageText = content.items.map(item => item.str).join(" ");
+          fullText += pageText + "\n\n";
+        }
 
-  async function importFiles(files) {
-    const list = Array.from(files || []);
-    if (!list.length) return;
+        return fullText.trim();
+      }
 
-    setStatus("Reading files...", "ok");
+      async function extractTextFromDocx(arrayBuffer) {
+        if (!window.mammoth) throw new Error("DOCX parser not loaded.");
+        const result = await mammoth.extractRawText({ arrayBuffer });
+        return String(result.value || "").trim();
+      }
 
-    const newChunks = [];
-    const errors = [];
+      async function parseUploadedFile(file) {
+        const name = file.name.toLowerCase();
 
-    for (const file of list) {
-      try {
-        const parsed = await parseUploadedFile(file);
-        const chunks = parsed.chunks || [];
-        chunks.forEach(chunk => {
-          if ((chunk.text && chunk.text.trim()) || (chunk.html && chunk.html.trim())) {
-            newChunks.push({
-              ...chunk,
-              text: (chunk.text || "").trim(),
-              html: chunk.html || ""
+        if (file.size > 20 * 1024 * 1024) {
+          throw new Error(file.name + " is larger than 20MB.");
+        }
+
+        if (name.endsWith(".txt") || name.endsWith(".md") || name.endsWith(".log") || name.endsWith(".csv")) {
+          return {
+            chunks: [{
+              sourceType: "local-file",
+              sourceName: file.name,
+              title: file.name,
+              source: "Local upload",
+              text: await file.text(),
+              url: ""
+            }]
+          };
+        }
+
+        if (name.endsWith(".eml")) {
+          const raw = await file.text();
+          const parsed = parseEml(raw);
+
+          const chunks = [{
+            sourceType: "eml-body",
+            sourceName: file.name,
+            title: parsed.subject || file.name,
+            source: parsed.from || "EML message",
+            text: parsed.body,
+            url: "",
+            metaDate: parsed.date || ""
+          }];
+
+          parsed.attachments.forEach(att => {
+            if (att.text && att.text.trim()) {
+              chunks.push({
+                sourceType: "eml-attachment",
+                sourceName: att.filename,
+                title: att.filename + " (" + (parsed.subject || file.name) + ")",
+                source: "EML attachment",
+                text: att.text,
+                url: "",
+                metaDate: parsed.date || ""
+              });
+            }
+          });
+
+          return { chunks };
+        }
+
+        if (name.endsWith(".pdf")) {
+          const buffer = await file.arrayBuffer();
+          const text = await extractTextFromPdf(buffer);
+          return {
+            chunks: [{
+              sourceType: "local-file",
+              sourceName: file.name,
+              title: file.name,
+              source: "Local upload",
+              text,
+              url: ""
+            }]
+          };
+        }
+
+        if (name.endsWith(".docx")) {
+          const buffer = await file.arrayBuffer();
+          const text = await extractTextFromDocx(buffer);
+          return {
+            chunks: [{
+              sourceType: "local-file",
+              sourceName: file.name,
+              title: file.name,
+              source: "Local upload",
+              text,
+              url: ""
+            }]
+          };
+        }
+
+        throw new Error("Unsupported file type: " + file.name);
+      }
+
+      async function importFiles(files) {
+        const list = Array.from(files || []);
+        if (!list.length) return;
+
+        setStatus("Reading files...", "ok");
+
+        const newChunks = [];
+        const errors = [];
+
+        for (const file of list) {
+          try {
+            const parsed = await parseUploadedFile(file);
+            parsed.chunks.forEach(chunk => {
+              if (chunk.text && chunk.text.trim()) {
+                newChunks.push({
+                  ...chunk,
+                  text: chunk.text.trim()
+                });
+              }
             });
+
+            if (!parsed.chunks.length) {
+              errors.push(file.name + ": no readable text found.");
+            }
+          } catch (err) {
+            console.error(err);
+            errors.push(file.name + ": " + err.message);
           }
+        }
+
+        importedChunks = importedChunks.concat(newChunks);
+        renderSourceList();
+
+        if (errors.length && newChunks.length) {
+          setStatus("Loaded " + newChunks.length + " chunk(s). Some files had issues: " + errors.join(" | "), "error");
+        } else if (errors.length) {
+          setStatus(errors.join(" | "), "error");
+        } else {
+          setStatus("Loaded " + newChunks.length + " chunk(s).", "ok");
+        }
+
+        runAnalysis();
+      }
+
+      function handleFileUpload(event) {
+        importFiles(event.target.files);
+      }
+
+      function setupDragDrop() {
+        ["dragenter", "dragover"].forEach(eventName => {
+          el.uploadBox.addEventListener(eventName, e => {
+            e.preventDefault();
+            e.stopPropagation();
+            el.uploadBox.classList.add("dragover");
+          });
         });
 
-        if (!chunks.length) {
-          errors.push(file.name + ": no readable text found.");
-        }
-      } catch (err) {
-        console.error(err);
-        errors.push(file.name + ": " + err.message);
+        ["dragleave", "drop"].forEach(eventName => {
+          el.uploadBox.addEventListener(eventName, e => {
+            e.preventDefault();
+            e.stopPropagation();
+            el.uploadBox.classList.remove("dragover");
+          });
+        });
+
+        el.uploadBox.addEventListener("drop", e => {
+          const files = e.dataTransfer.files;
+          importFiles(files);
+        });
       }
+
+      el.btnAnalyzeTop.addEventListener("click", runAnalysis);
+      el.btnAnalyzeSide.addEventListener("click", runAnalysis);
+      el.btnRefresh.addEventListener("click", runAnalysis);
+      el.btnExportCsv.addEventListener("click", downloadCsv);
+      el.btnExportJson.addEventListener("click", downloadJson);
+      el.btnExportMarkdown.addEventListener("click", downloadMarkdown);
+      el.btnKeywordToggle.addEventListener("click", toggleKeywordLibrary);
+      el.btnApplyKeywords.addEventListener("click", applyCustomKeywords);
+      el.btnClear.addEventListener("click", clearAllInputs);
+      el.btnLoadSample.addEventListener("click", loadSample);
+
+      el.fileInput.addEventListener("change", handleFileUpload);
+      el.searchBox.addEventListener("input", runAnalysis);
+      el.sortBy.addEventListener("change", runAnalysis);
+      el.minPriority.addEventListener("change", runAnalysis);
+      el.categoryFilter.addEventListener("change", runAnalysis);
+
+      setupDragDrop();
+      populateCategoryFilter();
+      fillKeywordLibrary();
+      updateSummary([]);
+      renderSourceList();
+      setStatus("Ready.", "ok");
     }
-
-    importedChunks = importedChunks.concat(newChunks);
-    renderSourceList();
-
-    if (errors.length && newChunks.length) {
-      setStatus("Loaded " + newChunks.length + " chunk(s). Some files had issues: " + errors.join(" | "), "error");
-    } else if (errors.length) {
-      setStatus(errors.join(" | "), "error");
-    } else {
-      setStatus("Loaded " + newChunks.length + " chunk(s).", "ok");
-    }
-
-    runAnalysis();
-  }
-
-  function handleFileUpload(event) {
-    importFiles(event.target.files);
-  }
-
-  function setupDragDrop() {
-    ["dragenter", "dragover"].forEach(eventName => {
-      el.uploadBox.addEventListener(eventName, e => {
-        e.preventDefault();
-        e.stopPropagation();
-        el.uploadBox.classList.add("dragover");
-      });
-    });
-
-    ["dragleave", "drop"].forEach(eventName => {
-      el.uploadBox.addEventListener(eventName, e => {
-        e.preventDefault();
-        e.stopPropagation();
-        el.uploadBox.classList.remove("dragover");
-      });
-    });
-
-    el.uploadBox.addEventListener("drop", e => {
-      importFiles(e.dataTransfer.files);
-    });
-  }
-
-  el.btnAnalyzeTop.addEventListener("click", runAnalysis);
-  el.btnAnalyzeSide.addEventListener("click", runAnalysis);
-  el.btnRefresh.addEventListener("click", runAnalysis);
-  el.btnExportCsv.addEventListener("click", downloadCsv);
-  el.btnExportJson.addEventListener("click", downloadJson);
-  el.btnExportMarkdown.addEventListener("click", downloadMarkdown);
-  el.btnKeywordToggle.addEventListener("click", toggleKeywordLibrary);
-  el.btnApplyKeywords.addEventListener("click", applyCustomKeywords);
-  el.btnClear.addEventListener("click", clearAllInputs);
-  el.btnLoadSample.addEventListener("click", loadSelectedSample);
-
-  el.fileInput.addEventListener("change", handleFileUpload);
-  el.searchBox.addEventListener("input", runAnalysis);
-  el.sortBy.addEventListener("change", runAnalysis);
-  el.minPriority.addEventListener("change", runAnalysis);
-  el.categoryFilter.addEventListener("change", runAnalysis);
-  el.watchlistText.addEventListener("input", persistWatchlist);
-
-  restoreKeywordsFromStorage();
-  populateCategoryFilter();
-  populateSampleSelect();
-  fillKeywordLibrary();
-  restoreWatchlist();
-  updateSummary([]);
-  renderSourceList();
-  setupDragDrop();
-  setStatus("Ready.", "ok");
-}
-</script>
+  </script>
 </body>
 </html>
+
+
