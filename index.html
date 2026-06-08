@@ -1380,6 +1380,40 @@ Regional Medical Properties is evaluating restructuring options after a going-co
   let importedChunks = [];
 
   const el = {
+  statusBox: document.getElementById("statusBox"),
+  alertText: document.getElementById("alertText"),
+  watchlistText: document.getElementById("watchlistText"),
+  ...
+  btnLoadSample: document.getElementById("btnLoadSample")
+};
+
+function persistWatchlist() {
+  try {
+    localStorage.setItem(STORAGE_KEYS.watchlist, el.watchlistText.value || "");
+  } catch (err) {
+    console.warn("Watchlist save failed:", err);
+  }
+}
+
+function restoreWatchlist() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEYS.watchlist);
+    if (saved) {
+      el.watchlistText.value = saved;
+    }
+  } catch (err) {
+    console.warn("Watchlist restore failed:", err);
+  }
+}
+
+function toggleKeywordLibrary() {
+  el.keywordLibraryWrap.style.display =
+    el.keywordLibraryWrap.style.display === "none" ? "block" : "none";
+}
+
+function setStatus(message, type) {
+  ...
+}
     statusBox: document.getElementById("statusBox"),
     alertText: document.getElementById("alertText"),
     watchlistText: document.getElementById("watchlistText"),
