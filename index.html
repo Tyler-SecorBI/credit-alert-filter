@@ -1581,6 +1581,52 @@ Regional Medical Properties is evaluating restructuring options after a going-co
         btnClear: document.getElementById("btnClear"),
         btnLoadSample: document.getElementById("btnLoadSample")
       };
+const el = {
+  statusBox: document.getElementById("statusBox"),
+  alertText: document.getElementById("alertText"),
+  watchlistText: document.getElementById("watchlistText"),
+  minPriority: document.getElementById("minPriority"),
+  categoryFilter: document.getElementById("categoryFilter"),
+  searchBox: document.getElementById("searchBox"),
+  sortBy: document.getElementById("sortBy"),
+  sampleSelect: document.getElementById("sampleSelect"),
+  results: document.getElementById("results"),
+  shownCount: document.getElementById("shownCount"),
+  parsedCount: document.getElementById("parsedCount"),
+  countHigh: document.getElementById("countHigh"),
+  countMedium: document.getElementById("countMedium"),
+  countLow: document.getElementById("countLow"),
+  countPositive: document.getElementById("countPositive"),
+  keywordCount: document.getElementById("keywordCount"),
+  keywordLibraryWrap: document.getElementById("keywordLibraryWrap"),
+  keywordLibrary: document.getElementById("keywordLibrary"),
+  fileInput: document.getElementById("fileInput"),
+  uploadBox: document.getElementById("uploadBox"),
+  sourceList: document.getElementById("sourceList"),
+  btnAnalyzeTop: document.getElementById("btnAnalyzeTop"),
+  btnAnalyzeSide: document.getElementById("btnAnalyzeSide"),
+  btnRefresh: document.getElementById("btnRefresh"),
+  btnExportCsv: document.getElementById("btnExportCsv"),
+  btnExportJson: document.getElementById("btnExportJson"),
+  btnExportMarkdown: document.getElementById("btnExportMarkdown"),
+  btnKeywordToggle: document.getElementById("btnKeywordToggle"),
+  btnApplyKeywords: document.getElementById("btnApplyKeywords"),
+  btnClear: document.getElementById("btnClear"),
+  btnLoadSample: document.getElementById("btnLoadSample")
+};
+
+// PASTE THE PATCH HERE
+function escapeHtml(str) {
+  ...
+}
+
+function normalize(text) {
+  ...
+}
+
+function parseEml(rawText, sourceName = "email.eml") {
+  ...
+}
 
       function setStatus(message, type) {
         if (!message) {
